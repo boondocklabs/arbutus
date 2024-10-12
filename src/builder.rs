@@ -1,3 +1,8 @@
+//! A module providing builders for constructing trees and nodes.
+//!
+//! The `NodeBuilder` and `TreeBuilder` types enable building tree structures in a composable way.
+//!
+
 use std::marker::PhantomData;
 
 use tracing::{debug, debug_span};
@@ -7,7 +12,18 @@ use crate::{
     node::{NodeRef, TreeNode},
 };
 
-/// NodeBuilder is used for building children from a parent node
+/// A builder for constructing children from a parent node.
+///
+/// The `NodeBuilder` type provides methods for adding child nodes to the current parent node.
+/// It is designed to be used with the `TreeBuilder` type.
+///
+/// # Examples
+///
+/// ```
+/// use arbutus::{NodeBuilder, TreeNode};
+/// let mut builder = NodeBuilder::new(node, idgen);
+/// let child_builder = builder.child(data, |child| { /* add children */ });
+/// ```
 #[derive(Debug)]
 pub struct NodeBuilder<'a, 'tree, Data, IdGen>
 where
@@ -22,6 +38,12 @@ impl<'a, 'tree, Data, IdGen> NodeBuilder<'a, 'tree, Data, IdGen>
 where
     IdGen: UniqueGenerator,
 {
+    /// Creates a new `NodeBuilder` instance.
+    ///
+    /// # Arguments
+    ///
+    /// * `node`: The parent node to build children for.
+    /// * `idgen`: The ID generator to use for child nodes.
     pub fn new(node: &'a mut TreeNode<'tree, Data, IdGen::Output>, idgen: &'a mut IdGen) -> Self {
         debug!("Created new NodeBuilder for {}", node.id());
         Self {
@@ -31,6 +53,12 @@ where
         }
     }
 
+    /// Adds a child to the current parent node.
+    ///
+    /// # Arguments
+    ///
+    /// * `data`: The data to associate with the child node.
+    /// * `f`: A closure that takes the child builder and adds its own children.
     pub fn child<F>(&mut self, data: Data, f: F) -> &Self
     where
         F: Fn(&mut NodeBuilder<'_, 'tree, Data, IdGen>),
@@ -47,7 +75,18 @@ where
     }
 }
 
-/// TreeBuilder
+/// A builder for constructing trees.
+///
+/// The `TreeBuilder` type provides methods for adding nodes and children to the tree structure.
+///
+/// # Examples
+///
+/// ```
+/// use arbutus::{TreeBuilder, TreeNode};
+/// let mut builder = TreeBuilder::new();
+/// let root_builder = builder.root(data, |root| { /* add children */ });
+/// let done = root_builder.done();
+/// ```
 #[derive(Debug)]
 pub struct TreeBuilder<'tree, Data, IdGen = crate::IdGenerator>
 where
@@ -63,6 +102,7 @@ impl<'tree, Data, IdGen> TreeBuilder<'tree, Data, IdGen>
 where
     IdGen: UniqueGenerator,
 {
+    /// Creates a new `TreeBuilder` instance.
     pub fn new() -> Self {
         let debug_span = debug_span!("TreeBuilder");
         let _debug = debug_span.enter();
@@ -79,6 +119,7 @@ where
         }
     }
 
+    /// Returns the constructed tree when finished building it.
     pub fn done(self) -> Option<NodeRef<'tree, Data, IdGen::Output>> {
         self.debug_span.in_scope(|| {
             debug!("Finished build tree");
@@ -87,6 +128,12 @@ where
         })
     }
 
+    /// Adds a root node to the tree and returns the updated builder.
+    ///
+    /// # Arguments
+    ///
+    /// * `data`: The data to associate with the root node.
+    /// * `f`: A closure that takes the root builder and adds its own children.
     pub fn root<F>(mut self, data: Data, f: F) -> Self
     where
         Data: 'tree,
