@@ -5,33 +5,53 @@ use std::{
     rc::Rc,
 };
 
+use tracing::debug;
+
 use crate::NodeId;
 
-#[derive(Debug, Clone)]
-pub struct TreeNode<'tree, Data, Id = NodeId> {
+#[derive(Debug)]
+pub struct TreeNode<'tree, Data, Id = NodeId>
+where
+    Id: Clone + std::fmt::Display,
+{
     id: Id,
     data: Rc<RefCell<Data>>,
-    children: Option<Vec<NodeRef<'tree, Data, Id>>>,
-    //_phantom: PhantomData<&'tree Data>,
+    children: Rc<Option<RefCell<Vec<NodeRef<'tree, Data, Id>>>>>,
+}
+
+impl<'tree, Data, Id> Clone for TreeNode<'tree, Data, Id>
+where
+    Id: Clone + std::fmt::Display,
+{
+    fn clone(&self) -> Self {
+        TreeNode {
+            id: self.id.clone(),
+            data: self.data.clone(),
+            children: self.children.clone(),
+        }
+    }
 }
 
 impl<'tree, Data, Id> TreeNode<'tree, Data, Id>
 where
-    Id: Clone + 'static,
-    Data: Clone + 'static,
+    Id: Clone + std::fmt::Display,
 {
     pub fn new(id: Id, data: Data, children: Option<Vec<TreeNode<'tree, Data, Id>>>) -> Self {
         let children = children.map(|children| {
-            children
-                .into_iter()
-                .map(|child| NodeRef::new(child))
-                .collect()
+            RefCell::new(
+                children
+                    .into_iter()
+                    .map(|child| NodeRef::new(child))
+                    .collect(),
+            )
         });
+
+        debug!("Created Node ID {}", id);
 
         TreeNode {
             id,
             data: Rc::new(RefCell::new(data)),
-            children,
+            children: Rc::new(children),
         }
     }
 
@@ -39,24 +59,54 @@ where
         self.id.clone()
     }
 
-    pub fn children(&self) -> Option<&Vec<NodeRef<'tree, Data, Id>>> {
-        self.children.as_ref()
+    pub fn children(&self) -> Option<&RefCell<Vec<NodeRef<'tree, Data, Id>>>> {
+        (*self.children).as_ref()
     }
 
     pub fn data<'b>(&'b self) -> Ref<'b, Data> {
         self.data.borrow()
     }
+
+    pub fn add_child(&mut self, node: NodeRef<'tree, Data, Id>)
+    where
+        Id: 'static,
+    {
+        if self.children.is_none() {
+            debug!(
+                "Adding first child {} to node {}",
+                node.borrow().id(),
+                self.id()
+            );
+            self.children = Rc::new(Some(RefCell::new(vec![node])))
+        } else {
+            debug!("Adding child {} to node {}", node.borrow().id(), self.id());
+            self.children().unwrap().borrow_mut().push(node);
+        }
+    }
 }
 
-#[derive(Debug, Clone)]
-pub struct NodeRef<'node, Data, Id> {
+#[derive(Debug)]
+pub struct NodeRef<'node, Data, Id>
+where
+    Id: Clone + std::fmt::Display,
+{
     node_ref: Rc<RefCell<TreeNode<'node, Data, Id>>>,
+}
+
+impl<'node, Data, Id> Clone for NodeRef<'node, Data, Id>
+where
+    Id: Clone + std::fmt::Display,
+{
+    fn clone(&self) -> Self {
+        Self {
+            node_ref: self.node_ref.clone(),
+        }
+    }
 }
 
 impl<'node, Data, Id> NodeRef<'node, Data, Id>
 where
-    Id: Clone + 'static,
-    Data: Clone + 'static,
+    Id: Clone + std::fmt::Display,
 {
     pub fn new(node: TreeNode<'node, Data, Id>) -> Self {
         Self {
@@ -80,9 +130,12 @@ where
                 break;
             };
             let node = current.map(|node| {
-                node.node()
-                    .children()
-                    .map(|children| children.iter().map(|child| stack.push_front(child.clone())));
+                node.node().children().map(|children| {
+                    _ = children
+                        .borrow()
+                        .iter()
+                        .map(|child| stack.push_front((*child).clone()));
+                });
                 node
             });
 
@@ -95,7 +148,7 @@ where
 
 impl<'node, Data, Id> Deref for NodeRef<'node, Data, Id>
 where
-    Id: 'static,
+    Id: Clone + std::fmt::Display + 'static,
 {
     type Target = RefCell<TreeNode<'node, Data, Id>>;
 
@@ -106,7 +159,7 @@ where
 
 impl<'iter, Data, Id> IntoIterator for NodeRef<'iter, Data, Id>
 where
-    Id: Clone + 'static,
+    Id: Clone + std::fmt::Display + 'static,
     Data: Clone + std::fmt::Debug + 'static,
 {
     type Item = NodeRef<'iter, Data, Id>;
@@ -120,14 +173,17 @@ where
     }
 }
 
-pub struct TreeNodeIter<'iter, Data, Id> {
+pub struct TreeNodeIter<'iter, Data, Id>
+where
+    Id: Clone + std::fmt::Display + 'static,
+{
     stack: VecDeque<NodeRef<'iter, Data, Id>>,
 }
 
 impl<'iter, Data, Id> Iterator for TreeNodeIter<'iter, Data, Id>
 where
-    Data: Clone + std::fmt::Debug + 'static,
-    Id: Clone + 'static,
+    Data: std::fmt::Debug + 'static,
+    Id: Clone + std::fmt::Display + 'static,
 {
     type Item = NodeRef<'iter, Data, Id>;
 
@@ -136,9 +192,9 @@ where
 
         current.map(|node| {
             node.node().children().map(|children| {
-                for child in children.clone() {
-                    self.stack.push_front(child.clone())
-                }
+                _ = children.borrow().iter().map(|child| {
+                    self.stack.push_front((*child).clone());
+                });
             });
 
             node
@@ -160,6 +216,7 @@ mod tests {
     use super::TreeNode;
 
     #[derive(Debug, Clone)]
+    #[allow(unused)]
     enum TestData {
         Foo,
         Bar,
@@ -191,8 +248,8 @@ mod tests {
     where
         'tree: 'index,
     {
-        tree: Tree<'tree, TestData, NodeId>,
-        index: BTreeIndex<'index, TestData>,
+        _tree: Tree<'tree, TestData, NodeId>,
+        _index: BTreeIndex<'index, TestData>,
     }
 
     #[traced_test]
@@ -200,10 +257,13 @@ mod tests {
     fn test_tree() {
         let nodes = simple_tree();
 
-        let tree = Tree::new(nodes);
+        let tree = Tree::from_nodes(nodes);
         let index = BTreeIndex::from_tree(&tree);
 
-        let app = App { tree, index }; // index };
+        let app = App {
+            _tree: tree,
+            _index: index,
+        }; // index };
         info!("{app:#?}");
     }
 }

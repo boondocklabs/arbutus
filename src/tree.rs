@@ -5,17 +5,20 @@ use crate::{
 };
 
 #[derive(Debug)]
-pub struct Tree<'tree, Data, Id = NodeId> {
+pub struct Tree<'tree, Data, Id = NodeId>
+where
+    Id: Clone + std::fmt::Display + 'static,
+{
     root: NodeRef<'tree, Data, Id>,
 }
 
 impl<'tree, Data, Id> Tree<'tree, Data, Id>
 where
     Data: std::fmt::Debug,
-    Id: Clone + std::fmt::Debug + 'static,
+    Id: Clone + std::fmt::Debug + std::fmt::Display + 'static,
     Data: Clone + 'static,
 {
-    pub fn new(root: TreeNode<'tree, Data, Id>) -> Self {
+    pub fn from_nodes(root: TreeNode<'tree, Data, Id>) -> Self {
         Self {
             root: NodeRef::new(root),
         }
@@ -32,7 +35,7 @@ where
 
 pub struct IndexedTree<'tree, Data, Id = NodeId>
 where
-    Id: Default,
+    Id: Default + Clone + std::fmt::Display + 'static,
     Data: Default + std::fmt::Debug,
 {
     tree: Tree<'tree, Data, Id>,
@@ -41,7 +44,7 @@ where
 
 impl<'tree, Data, Id> IndexedTree<'tree, Data, Id>
 where
-    Id: Default + Clone + Ord + std::fmt::Debug + 'static,
+    Id: Default + Clone + Ord + std::fmt::Debug + std::fmt::Display + 'static,
     Data: Default + Clone + std::fmt::Debug + 'static,
 {
     pub fn from_tree(tree: Tree<'tree, Data, Id>) -> Self {
@@ -56,5 +59,9 @@ where
 
     pub fn index(&self) -> &BTreeIndex<'tree, Data, Id> {
         &self.index
+    }
+
+    pub fn get_node(&self, id: &Id) -> Option<&NodeRef<'tree, Data, Id>> {
+        self.index.get(id)
     }
 }

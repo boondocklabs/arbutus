@@ -1,7 +1,8 @@
 use std::sync::atomic::AtomicU64;
 
-pub trait UniqueGenerator: std::fmt::Debug {
-    type Output: std::fmt::Debug;
+pub trait UniqueGenerator: Default + std::fmt::Debug + 'static {
+    type Output: Clone + std::fmt::Debug + std::fmt::Display;
+
     /// Generate a unique value
     fn generate(&mut self) -> Self::Output;
 }
