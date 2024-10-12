@@ -1,8 +1,12 @@
 [package]
 name = "arbutus"
-description = "Arbutus Trees"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+description = "Arbutus Trees"
+homepage = "https://github.com/boondocklabs/arbutus"
+repository = "https://github.com/boondocklabs/arbutus"
+readme = "README.md"
 
 [dependencies]
 tracing = "0.1.40"

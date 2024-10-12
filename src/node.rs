@@ -1,7 +1,6 @@
 use std::{
     cell::{Ref, RefCell},
     collections::VecDeque,
-    marker::PhantomData,
     ops::Deref,
     rc::Rc,
 };
@@ -11,7 +10,7 @@ use crate::NodeId;
 #[derive(Debug, Clone)]
 pub struct TreeNode<'tree, Data, Id = NodeId> {
     id: Id,
-    data: Rc<Data>,
+    data: Rc<RefCell<Data>>,
     children: Option<Vec<NodeRef<'tree, Data, Id>>>,
     //_phantom: PhantomData<&'tree Data>,
 }
@@ -31,9 +30,8 @@ where
 
         TreeNode {
             id,
-            data: Rc::new(data),
+            data: Rc::new(RefCell::new(data)),
             children,
-            //_phantom: PhantomData,
         }
     }
 
@@ -43,6 +41,10 @@ where
 
     pub fn children(&self) -> Option<&Vec<NodeRef<'tree, Data, Id>>> {
         self.children.as_ref()
+    }
+
+    pub fn data<'b>(&'b self) -> Ref<'b, Data> {
+        self.data.borrow()
     }
 }
 
@@ -62,7 +64,7 @@ where
         }
     }
 
-    pub fn node<'a>(&'a self) -> Ref<'a, TreeNode<'node, Data, Id>> {
+    pub fn node<'b>(&'b self) -> Ref<'b, TreeNode<'node, Data, Id>> {
         self.node_ref.borrow()
     }
 
@@ -99,32 +101,6 @@ where
 
     fn deref(&self) -> &Self::Target {
         &*self.node_ref
-    }
-}
-
-#[derive(Debug)]
-pub struct Tree<'tree, Data, Id = NodeId> {
-    root: NodeRef<'tree, Data, Id>,
-}
-
-impl<'tree, Data, Id> Tree<'tree, Data, Id>
-where
-    Data: std::fmt::Debug,
-    Id: Clone + std::fmt::Debug + 'static,
-    Data: Clone + 'static,
-{
-    pub fn new(root: TreeNode<'tree, Data, Id>) -> Self {
-        Self {
-            root: NodeRef::new(root),
-        }
-    }
-
-    pub fn root(&self) -> NodeRef<'tree, Data, Id> {
-        self.root.clone()
-    }
-
-    pub fn root_ref<'a>(&'a self) -> &'a NodeRef<'tree, Data, Id> {
-        &self.root
     }
 }
 
@@ -177,9 +153,8 @@ mod tests {
 
     use crate::{
         id::{AtomicU64Generator, UniqueGenerator},
-        index::{BTreeIndex, Index},
-        node::Tree,
-        NodeId,
+        index::{BTreeIndex, TreeIndex},
+        NodeId, Tree,
     };
 
     use super::TreeNode;

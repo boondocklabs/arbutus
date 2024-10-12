@@ -1,21 +1,5 @@
 use std::sync::atomic::AtomicU64;
 
-#[derive(Debug)]
-pub struct Ident<T = AtomicU64Generator>(T);
-
-impl<T> Ident<T>
-where
-    T: UniqueGenerator,
-{
-    pub fn new(id: T::Output) -> Ident<T::Output> {
-        Ident(id)
-    }
-
-    pub fn generate(gen: &mut T) -> Ident<T::Output> {
-        Ident(gen.generate())
-    }
-}
-
 pub trait UniqueGenerator: std::fmt::Debug {
     type Output: std::fmt::Debug;
     /// Generate a unique value
