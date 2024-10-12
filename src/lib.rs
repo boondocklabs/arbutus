@@ -1,3 +1,13 @@
+//! # Arbutus
+//!
+//! A tree data structure library for Rust.
+//!
+//! ## Overview
+//!
+//! Arbutus provides a high-level API for constructing and manipulating trees,
+//! along with support for indexing and querying. The library focuses on simplicity,
+//! flexibility, and performance.
+
 use id::UniqueGenerator;
 
 mod builder;
