@@ -208,12 +208,11 @@ mod tests {
     use tracing_test::traced_test;
 
     use crate::{
-        id::{AtomicU64Generator, UniqueGenerator},
         index::{BTreeIndex, TreeIndex},
-        NodeId, Tree,
+        NodeId, Tree, TreeBuilder,
     };
 
-    use super::TreeNode;
+    use super::NodeRef;
 
     #[derive(Debug, Clone)]
     #[allow(unused)]
@@ -230,17 +229,15 @@ mod tests {
     }
 
     /// Create a simple tree for tests
-    fn simple_tree<'a>() -> TreeNode<'a, TestData> {
-        let mut gen = AtomicU64Generator::default();
-
-        let a = TreeNode::new(gen.generate(), TestData::Foo, None);
-        let b = TreeNode::new(gen.generate(), TestData::Bar, Some(vec![a]));
-        let root = TreeNode::new(
-            gen.generate(),
-            TestData::String("Hello".into()),
-            Some(vec![b]),
-        );
-        root
+    fn simple_tree<'a>() -> NodeRef<'a, TestData, NodeId> {
+        TreeBuilder::<TestData>::new()
+            .root(TestData::Foo, |foo| {
+                foo.child(TestData::Bar, |bar| {
+                    bar.child(TestData::String("Hello".into()), |_| {});
+                });
+            })
+            .done()
+            .unwrap()
     }
 
     #[derive(Debug)]

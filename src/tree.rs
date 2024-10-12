@@ -1,6 +1,6 @@
 use crate::{
     index::{BTreeIndex, TreeIndex},
-    node::{NodeRef, TreeNode},
+    node::NodeRef,
     NodeId,
 };
 
@@ -18,10 +18,8 @@ where
     Id: Clone + std::fmt::Debug + std::fmt::Display + 'static,
     Data: Clone + 'static,
 {
-    pub fn from_nodes(root: TreeNode<'tree, Data, Id>) -> Self {
-        Self {
-            root: NodeRef::new(root),
-        }
+    pub fn from_nodes(root: NodeRef<'tree, Data, Id>) -> Self {
+        Self { root }
     }
 
     pub fn root(&self) -> NodeRef<'tree, Data, Id> {
