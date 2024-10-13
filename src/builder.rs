@@ -17,24 +17,17 @@ use crate::{
 /// The `NodeBuilder` type provides methods for adding child nodes to the current parent node.
 /// It is designed to be used with the `TreeBuilder` type.
 ///
-/// # Examples
-///
-/// ```
-/// use arbutus::{NodeBuilder, TreeNode};
-/// let mut builder = NodeBuilder::new(node, idgen);
-/// let child_builder = builder.child(data, |child| { /* add children */ });
-/// ```
 #[derive(Debug)]
-pub struct NodeBuilder<'a, 'tree, Data, IdGen>
+pub struct NodeBuilder<'a, 'tree, Data, E, IdGen = crate::IdGenerator>
 where
     IdGen: UniqueGenerator,
 {
     node: &'a mut TreeNode<'tree, Data, IdGen::Output>,
     idgen: &'a mut IdGen,
-    _phantom: PhantomData<Data>,
+    _phantom: (PhantomData<Data>, PhantomData<E>),
 }
 
-impl<'a, 'tree, Data, IdGen> NodeBuilder<'a, 'tree, Data, IdGen>
+impl<'a, 'tree, Data, E, IdGen> NodeBuilder<'a, 'tree, Data, E, IdGen>
 where
     IdGen: UniqueGenerator,
 {
@@ -49,7 +42,7 @@ where
         Self {
             node,
             idgen,
-            _phantom: PhantomData,
+            _phantom: (PhantomData, PhantomData),
         }
     }
 
@@ -59,19 +52,19 @@ where
     ///
     /// * `data`: The data to associate with the child node.
     /// * `f`: A closure that takes the child builder and adds its own children.
-    pub fn child<F>(&mut self, data: Data, f: F) -> &Self
+    pub fn child<F>(&mut self, data: Data, f: F) -> Result<(), E>
     where
-        F: Fn(&mut NodeBuilder<'_, 'tree, Data, IdGen>),
+        F: Fn(&mut NodeBuilder<'_, 'tree, Data, E, IdGen>) -> Result<(), E>,
     {
         let id = self.idgen.generate();
         let mut node = TreeNode::<Data, IdGen::Output>::new(id, data, None);
-        let mut node_builder = NodeBuilder::<Data, IdGen>::new(&mut node, &mut self.idgen);
+        let mut node_builder = NodeBuilder::<Data, E, IdGen>::new(&mut node, &mut self.idgen);
 
         // Call the supplied closure with the NodeBuilder to add this node's children
-        f(&mut node_builder);
+        f(&mut node_builder)?;
 
         self.node.add_child(NodeRef::new(node));
-        self
+        Ok(())
     }
 }
 
@@ -79,16 +72,26 @@ where
 ///
 /// The `TreeBuilder` type provides methods for adding nodes and children to the tree structure.
 ///
+/// There is a `root` method on the builder to add an initial root node, which calls
+/// the provided closure with a NodeBuilder that can be used to recursively build children of
+/// the node. The closures expect a Result<(), E> to be returned, where E is your defined error
+/// type. This allows errors within your closures to propagate.
+///
 /// # Examples
 ///
 /// ```
+/// type MyData = String;
+/// type MyError = String;
+///
 /// use arbutus::{TreeBuilder, TreeNode};
-/// let mut builder = TreeBuilder::new();
-/// let root_builder = builder.root(data, |root| { /* add children */ });
-/// let done = root_builder.done();
+/// let mut builder = TreeBuilder::<MyData, MyError>::new();
+/// let root_builder = builder.root("Root".to_string(), |root| { /* add children */ Ok(()) });
+///
+/// // Unwrap out of the error. Typically you would use `builder?.done()` to propagate errors up
+/// let done = root_builder.unwrap().done();
 /// ```
 #[derive(Debug)]
-pub struct TreeBuilder<'tree, Data, IdGen = crate::IdGenerator>
+pub struct TreeBuilder<'tree, Data, E, IdGen = crate::IdGenerator>
 where
     IdGen: UniqueGenerator,
 {
@@ -96,9 +99,10 @@ where
     root: Option<NodeRef<'tree, Data, IdGen::Output>>,
     current: Option<NodeRef<'tree, Data, IdGen::Output>>,
     debug_span: tracing::Span,
+    _phantom: PhantomData<E>,
 }
 
-impl<'tree, Data, IdGen> TreeBuilder<'tree, Data, IdGen>
+impl<'tree, Data, E, IdGen> TreeBuilder<'tree, Data, E, IdGen>
 where
     IdGen: UniqueGenerator,
 {
@@ -116,15 +120,16 @@ where
             root: None,
             current: None,
             debug_span,
+            _phantom: PhantomData,
         }
     }
 
     /// Returns the constructed tree when finished building it.
-    pub fn done(self) -> Option<NodeRef<'tree, Data, IdGen::Output>> {
+    pub fn done(self) -> Result<Option<NodeRef<'tree, Data, IdGen::Output>>, E> {
         self.debug_span.in_scope(|| {
             debug!("Finished build tree");
 
-            self.root
+            Ok(self.root)
         })
     }
 
@@ -134,20 +139,20 @@ where
     ///
     /// * `data`: The data to associate with the root node.
     /// * `f`: A closure that takes the root builder and adds its own children.
-    pub fn root<F>(mut self, data: Data, f: F) -> Self
+    pub fn root<F>(mut self, data: Data, f: F) -> Result<Self, E>
     where
         Data: 'tree,
-        F: Fn(&mut NodeBuilder<'_, 'tree, Data, IdGen>),
+        F: FnOnce(&mut NodeBuilder<'_, 'tree, Data, E, IdGen>) -> Result<(), E>,
     {
         let id = self.idgen.generate();
 
         self.debug_span.in_scope(|| {
             let mut node = TreeNode::<Data, IdGen::Output>::new(id, data, None);
 
-            let mut node_builder = NodeBuilder::<Data, IdGen>::new(&mut node, &mut self.idgen);
+            let mut node_builder = NodeBuilder::<Data, E, IdGen>::new(&mut node, &mut self.idgen);
 
             // Call the supplied closure with the NodeBuilder to add this node's children
-            f(&mut node_builder);
+            f(&mut node_builder)?;
 
             let node = NodeRef::new(node);
 
@@ -156,11 +161,13 @@ where
                 self.root = Some(node);
                 debug!("Added root node");
             } else {
-                debug!("Adding node as child of current")
+                panic!("Root node already exists");
+                //debug!("Adding node as child of current")
                 //self.current.unwrap().node().children().
             }
-        });
-        self
+            Ok(())
+        })?;
+        Ok(self)
     }
 }
 
@@ -176,6 +183,12 @@ mod tests {
     fn test_builder() {
         #[derive(Debug)]
         #[allow(unused)]
+        enum MyError {
+            Fail(String),
+        }
+
+        #[derive(Debug)]
+        #[allow(unused)]
         enum TestData {
             Foo,
             Bar,
@@ -183,15 +196,20 @@ mod tests {
             Baz,
         }
 
-        let tree = TreeBuilder::<TestData>::new()
+        let tree = TreeBuilder::<TestData, MyError>::new()
             .root(TestData::Foo, |foo| {
                 debug!("Foo builder closure");
+
                 foo.child(TestData::Bar, |bar| {
                     debug!("Bar builder closure");
-                    bar.child(TestData::Baz, |_| {});
-                });
-                foo.child(TestData::String("Hello".into()), |_| {});
+                    bar.child(TestData::Baz, |_| Ok(()))
+                })?;
+
+                foo.child(TestData::String("Hello".into()), |_| Ok(()))?;
+
+                Ok(())
             })
+            .unwrap()
             .done();
         info!("{tree:#?}");
     }

@@ -49,8 +49,8 @@ where
     fn from_tree(tree: &Tree<'index, Data, Id>) -> Self {
         let mut index = Self::new();
 
-        for node_ref in tree.root() {
-            index.insert(node_ref.node().id(), node_ref.clone());
+        for node in tree.root() {
+            index.insert(node.node().id(), node.clone());
         }
 
         index

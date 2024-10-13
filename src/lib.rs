@@ -18,6 +18,7 @@ mod node;
 mod tree;
 
 pub use builder::*;
+pub use node::TreeNode;
 pub use tree::IndexedTree;
 pub use tree::Tree;
 
