@@ -1,14 +1,13 @@
 use std::{
-    cell::{Ref, RefCell},
+    cell::{Ref, RefCell, RefMut},
     collections::VecDeque,
-    fmt::Write,
     ops::Deref,
     rc::Rc,
 };
 
 use tracing::debug;
 
-use crate::{iterator::NodeRefIter, NodeId};
+use crate::{display::TreeDisplay, iterator::NodeRefIter, NodeId};
 
 #[derive(Debug)]
 pub struct TreeNode<'tree, Data, Id = NodeId>
@@ -69,6 +68,10 @@ where
         self.data.borrow()
     }
 
+    pub fn data_mut<'b>(&'b self) -> RefMut<'b, Data> {
+        self.data.borrow_mut()
+    }
+
     pub fn add_child(&mut self, node: NodeRef<'tree, Data, Id>)
     where
         Id: 'static,
@@ -94,69 +97,23 @@ where
     node_ref: Rc<RefCell<TreeNode<'node, Data, Id>>>,
 }
 
+impl<'node, Data, Id> std::fmt::Display for NodeRef<'node, Data, Id>
+where
+    Id: Clone + std::fmt::Display + 'node,
+    Data: std::fmt::Debug + std::fmt::Display + 'node,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        TreeDisplay::format(self, f, |data, f| write!(f, "{}", data))
+    }
+}
+
 impl<'node, Data, Id> std::fmt::Debug for NodeRef<'node, Data, Id>
 where
     Id: Clone + std::fmt::Display + 'node,
     Data: std::fmt::Debug + 'node,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("\n")?;
-
-        let mut iter = self.iter().peekable();
-
-        let mut root_children = false;
-
-        let column_width = 2;
-
-        loop {
-            if let Some(node) = iter.next() {
-                // Peek at the next node to see if there are siblings
-                let has_siblings = if let Some(next_node) = iter.peek() {
-                    node.depth() == next_node.depth()
-                } else {
-                    false
-                };
-
-                let has_children = node.node().children().is_some();
-
-                if node.depth() == 0 {
-                    root_children = has_children
-                }
-
-                // The position of the first character of the payload from the previous row
-                let pos = node.depth() * column_width;
-
-                if node.depth() == 0 {
-                    if has_children || has_siblings {
-                        f.write_char('┏')?;
-                    } else {
-                        f.write_char('━')?;
-                    }
-                } else {
-                    for i in 0..pos {
-                        if i % column_width == 0 {
-                            f.write_char('┃')?;
-                        } else {
-                            f.write_char(' ')?;
-                        }
-                    }
-
-                    if has_children || has_siblings {
-                        f.write_char('┣')?;
-                    } else {
-                        f.write_char('┗')?;
-                    }
-                }
-
-                f.write_fmt(format_args!(" {:?}\n", node.node().data()))?;
-            } else {
-                // Finished node iteration
-                if root_children {
-                    f.write_str("┗")?;
-                }
-                return Ok(());
-            }
-        }
+        TreeDisplay::format(self, f, |data, f| write!(f, "{:?}", data))
     }
 }
 
@@ -181,7 +138,7 @@ where
         }
     }
 
-    pub fn node<'b>(&'b self) -> Ref<'b, TreeNode<'node, Data, Id>> {
+    pub fn node(&self) -> Ref<'_, TreeNode<'node, Data, Id>> {
         self.node_ref.borrow()
     }
 
@@ -241,8 +198,6 @@ mod tests {
         NodeId, Tree, TreeBuilder,
     };
 
-    use super::NodeRef;
-
     #[derive(Debug)]
     #[allow(unused)]
     enum TestError {
@@ -265,7 +220,7 @@ mod tests {
     }
 
     /// Create a simple tree for tests
-    fn simple_tree<'a>() -> Result<Option<NodeRef<'a, TestData, NodeId>>, TestError> {
+    fn simple_tree<'a>() -> Result<Option<Tree<'a, TestData, NodeId>>, TestError> {
         TreeBuilder::<TestData, TestError>::new()
             .root(TestData::Foo, |foo| {
                 foo.child(TestData::Bar, |bar| {
@@ -299,9 +254,8 @@ mod tests {
     #[traced_test]
     #[test]
     fn test_tree() {
-        let nodes = simple_tree().unwrap().unwrap();
+        let tree = simple_tree().unwrap().unwrap();
 
-        let tree = Tree::from_nodes(nodes);
         let index = BTreeIndex::from_tree(&tree);
 
         let app = App {

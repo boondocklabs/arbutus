@@ -11,6 +11,7 @@
 use id::UniqueGenerator;
 
 mod builder;
+mod display;
 mod id;
 mod index;
 mod iterator;
@@ -18,7 +19,7 @@ mod node;
 mod tree;
 
 pub use builder::*;
-pub use node::TreeNode;
+pub use node::{NodeRef, TreeNode};
 pub use tree::IndexedTree;
 pub use tree::Tree;
 

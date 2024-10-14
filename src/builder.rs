@@ -3,13 +3,14 @@
 //! The `NodeBuilder` and `TreeBuilder` types enable building tree structures in a composable way.
 //!
 
-use std::marker::PhantomData;
+use std::{cell::RefMut, marker::PhantomData};
 
 use tracing::{debug, debug_span};
 
 use crate::{
     id::UniqueGenerator,
     node::{NodeRef, TreeNode},
+    Tree,
 };
 
 /// A builder for constructing children from a parent node.
@@ -54,7 +55,7 @@ where
     /// * `f`: A closure that takes the child builder and adds its own children.
     pub fn child<F>(&mut self, data: Data, f: F) -> Result<(), E>
     where
-        F: Fn(&mut NodeBuilder<'_, 'tree, Data, E, IdGen>) -> Result<(), E>,
+        F: FnOnce(&mut NodeBuilder<'_, 'tree, Data, E, IdGen>) -> Result<(), E>,
     {
         let id = self.idgen.generate();
         let mut node = TreeNode::<Data, IdGen::Output>::new(id, data, None);
@@ -65,6 +66,11 @@ where
 
         self.node.add_child(NodeRef::new(node));
         Ok(())
+    }
+
+    /// Get a mutable reference to the data in this node
+    pub fn data_mut<'b>(&'b mut self) -> RefMut<'b, Data> {
+        self.node.data_mut()
     }
 }
 
@@ -125,11 +131,15 @@ where
     }
 
     /// Returns the constructed tree when finished building it.
-    pub fn done(self) -> Result<Option<NodeRef<'tree, Data, IdGen::Output>>, E> {
+    pub fn done(self) -> Result<Option<Tree<'tree, Data, IdGen::Output>>, E> {
         self.debug_span.in_scope(|| {
             debug!("Finished build tree");
 
-            Ok(self.root)
+            if let Some(root) = self.root {
+                Ok(Some(Tree::from_nodes(root)))
+            } else {
+                Ok(None)
+            }
         })
     }
 
@@ -141,7 +151,7 @@ where
     /// * `f`: A closure that takes the root builder and adds its own children.
     pub fn root<F>(mut self, data: Data, f: F) -> Result<Self, E>
     where
-        Data: 'tree,
+        Data: std::fmt::Debug + 'tree,
         F: FnOnce(&mut NodeBuilder<'_, 'tree, Data, E, IdGen>) -> Result<(), E>,
     {
         let id = self.idgen.generate();
@@ -157,9 +167,9 @@ where
             let node = NodeRef::new(node);
 
             if self.root.is_none() {
+                debug!("Added root {node:#?}");
                 self.current = Some(node.clone());
                 self.root = Some(node);
-                debug!("Added root node");
             } else {
                 panic!("Root node already exists");
                 //debug!("Adding node as child of current")

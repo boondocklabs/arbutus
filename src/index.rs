@@ -16,7 +16,6 @@ where
 #[derive(Debug)]
 pub struct BTreeIndex<'index, Data, Id = NodeId>
 where
-    Data: Default,
     Id: Default + Clone + std::fmt::Display + 'static,
 {
     index: BTreeMap<Id, NodeRef<'index, Data, Id>>,
@@ -25,31 +24,18 @@ where
 impl<'index, Data, Id> TreeIndex<'index, Data, Id> for BTreeIndex<'index, Data, Id>
 where
     Id: std::fmt::Debug + std::fmt::Display + Clone + Ord + Default + 'static,
-    Data: std::fmt::Debug + Default + Clone + 'static,
+    Data: std::fmt::Debug + 'static,
 {
     fn new() -> Self {
         Self {
             index: BTreeMap::new(),
         }
     }
-    /*
-    fn from_node(_start: &'index TreeNode<'index, Data, Id>) -> Self {
-        let mut index = BTreeMap::new();
-
-        /*
-        for node in start {
-            index.insert(node.id(), node);
-        }
-        */
-
-        Self { index }
-    }
-    */
 
     fn from_tree(tree: &Tree<'index, Data, Id>) -> Self {
         let mut index = Self::new();
 
-        for node in tree.root() {
+        for node in tree.root().iter() {
             index.insert(node.node().id(), node.clone());
         }
 
