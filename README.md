@@ -10,7 +10,7 @@ Arbutus provides a high-level API for constructing and manipulating trees, along
 
 *   **Tree Construction**: Build trees using the `TreeBuilder` API, which provides a composable way to construct tree structures.
 *   **Indexing**: Utilize B-Tree indices for efficient querying and retrieval of node data.
-*   **Iterators**: Traverse trees using iterators, which support depth-first or breadth-first traversal.
+*   **Iterators**: Traverse trees using iterators
 
 ### Getting Started
 
@@ -21,10 +21,39 @@ To get started with Arbutus, add the following dependency to your `Cargo.toml` f
 arbutus = "0.1.0"
 ```
 
-Then, import the library in your Rust code using:
+Example of building a tree
 
 ```rust
-use arbutus::{Tree, Node};
+// Custom errors can be propagated through the builder closures
+#[derive(Debug)]
+enum MyError {
+    Fail(String),
+}
+
+#[derive(Debug)]
+enum TestData {
+    Foo,
+    Bar,
+    String(String),
+    Baz,
+}
+
+let tree = TreeBuilder::<TestData, MyError>::new()
+    .root(TestData::Foo, |foo| {
+        debug!("Foo builder closure");
+
+        foo.child(TestData::Bar, |bar| {
+            debug!("Bar builder closure");
+            bar.child(TestData::Baz, |_| Ok(()))
+        })?;
+
+        foo.child(TestData::String("Hello".into()), |_| Ok(()))?;
+
+        Ok(())
+    })
+    .unwrap()
+    .done();
+info!("{tree:#?}");
 ```
 
 ### License

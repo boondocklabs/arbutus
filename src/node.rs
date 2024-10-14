@@ -92,7 +92,8 @@ where
 
 pub struct NodeRef<'node, Data, Id>
 where
-    Id: Clone + std::fmt::Display,
+    Id: Clone + std::fmt::Display + 'node,
+    Data: 'node,
 {
     node_ref: Rc<RefCell<TreeNode<'node, Data, Id>>>,
 }
@@ -138,13 +139,31 @@ where
         }
     }
 
-    pub fn node(&self) -> Ref<'_, TreeNode<'node, Data, Id>> {
+    pub fn node<'a>(&'a self) -> Ref<'a, TreeNode<'node, Data, Id>> {
         self.node_ref.borrow()
     }
 
-    pub fn for_each<E, F>(&self, mut f: F) -> Result<(), E>
+    pub fn with_data<'a, R, E, F>(&'a self, f: F) -> Result<R, E>
     where
-        F: FnMut(usize, NodeRef<Data, Id>) -> Result<(), E>,
+        F: FnOnce(Ref<Data>) -> Result<R, E>,
+    {
+        let node = self.node_ref.borrow();
+        let data = node.data.borrow();
+        f(data)
+    }
+
+    pub fn with_data_mut<'a, R, E, F>(&'a self, f: F) -> Result<R, E>
+    where
+        F: FnOnce(RefMut<Data>) -> Result<R, E>,
+    {
+        let node = self.node_ref.borrow();
+        let data = node.data.borrow_mut();
+        f(data)
+    }
+
+    pub fn for_each<E, F>(&self, f: F) -> Result<(), E>
+    where
+        F: Fn(usize, NodeRef<Data, Id>) -> Result<(), E>,
     {
         // Create a stack with depth 0, and the initial node
         let mut stack: VecDeque<(usize, NodeRef<Data, Id>)> = VecDeque::from([(0, self.clone())]);
