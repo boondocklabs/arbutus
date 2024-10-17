@@ -2,42 +2,40 @@ use std::ops::Deref;
 
 use crate::{
     index::{BTreeIndex, TreeIndex},
-    node::NodeRef,
-    NodeId,
+    node::Node,
+    noderef::NodeRef,
 };
 
 #[derive(Debug)]
-pub struct Tree<'tree, Data, Id = NodeId>
+pub struct Tree<R>
 where
-    Id: Clone + std::fmt::Display + 'static,
+    R: NodeRef + 'static,
 {
-    root: NodeRef<'tree, Data, Id>,
+    root: R,
 }
 
-impl<'tree, Data, Id> Tree<'tree, Data, Id>
+impl<R> Tree<R>
 where
-    Id: Clone + std::fmt::Debug + std::fmt::Display + 'tree,
-    Data: 'tree,
+    R: NodeRef + 'static,
 {
-    pub fn from_nodes(root: NodeRef<'tree, Data, Id>) -> Self {
+    pub fn from_nodes(root: R) -> Self {
         Self { root }
     }
 
-    pub fn root(&self) -> NodeRef<'tree, Data, Id> {
+    pub fn root(&self) -> R {
         self.root.clone()
     }
 
-    pub fn root_ref<'a>(&'a self) -> &'a NodeRef<'tree, Data, Id> {
+    pub fn root_ref<'a>(&'a self) -> &'a R {
         &self.root
     }
 }
 
-impl<'tree, Data, Id> Deref for Tree<'tree, Data, Id>
+impl<R> Deref for Tree<R>
 where
-    Id: Clone + std::fmt::Debug + std::fmt::Display + 'tree,
-    Data: 'tree,
+    R: NodeRef + 'static,
 {
-    type Target = NodeRef<'tree, Data, Id>;
+    type Target = R;
 
     fn deref(&self) -> &Self::Target {
         &self.root
@@ -45,45 +43,46 @@ where
 }
 
 #[derive(Debug)]
-pub struct IndexedTree<'tree, Data, Id = NodeId>
+pub struct IndexedTree<R>
 where
-    Id: Default + Clone + std::fmt::Display + 'static,
-    Data: std::fmt::Debug,
+    R: NodeRef + 'static,
 {
-    tree: Tree<'tree, Data, Id>,
-    index: BTreeIndex<'tree, Data, Id>,
+    tree: Tree<R>,
+    index: BTreeIndex<R>,
 }
 
-impl<'tree, Data, Id> IndexedTree<'tree, Data, Id>
+impl<R> IndexedTree<R>
 where
-    Id: Default + Clone + Ord + std::fmt::Debug + std::fmt::Display + 'static,
-    Data: std::fmt::Debug + 'static,
+    R: NodeRef + 'static,
 {
-    pub fn from_tree(tree: Tree<'tree, Data, Id>) -> Self {
+    pub fn from_tree(tree: Tree<R>) -> Self {
         let index = BTreeIndex::from_tree(&tree);
 
         Self { tree, index }
     }
 
-    pub fn tree(&self) -> &Tree<'tree, Data, Id> {
+    pub fn tree(&self) -> &Tree<R> {
         &self.tree
     }
 
-    pub fn index(&self) -> &BTreeIndex<'tree, Data, Id> {
+    pub fn index(&self) -> &BTreeIndex<R> {
         &self.index
     }
 
-    pub fn get_node(&self, id: &Id) -> Option<&NodeRef<'tree, Data, Id>> {
+    pub fn get_node(&self, id: &<<R as NodeRef>::Inner as Node>::Id) -> Option<&R> {
         self.index.get(id)
+    }
+
+    pub fn get_node_mut(&mut self, id: &<<R as NodeRef>::Inner as Node>::Id) -> Option<&mut R> {
+        self.index.get_mut(id)
     }
 }
 
-impl<'tree, Data, Id> Deref for IndexedTree<'tree, Data, Id>
+impl<R> Deref for IndexedTree<R>
 where
-    Id: Default + Clone + Ord + std::fmt::Debug + std::fmt::Display + 'static,
-    Data: std::fmt::Debug + 'static,
+    R: NodeRef + 'static,
 {
-    type Target = Tree<'tree, Data, Id>;
+    type Target = Tree<R>;
 
     fn deref(&self) -> &Self::Target {
         &self.tree

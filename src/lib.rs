@@ -8,18 +8,19 @@
 //! along with support for indexing and querying. The library focuses on simplicity,
 //! flexibility, and performance.
 
-use id::UniqueGenerator;
-
 mod builder;
 mod display;
 mod id;
 mod index;
 mod iterator;
 mod node;
+mod noderef;
 mod tree;
 
 pub use builder::*;
-pub use node::{NodeRef, TreeNode};
+pub use id::*;
+pub use node::{Node, TreeNodeRefCell, TreeNodeSimple};
+pub use noderef::{NodeRef, NodeRefRc, NodeRefRef};
 pub use tree::IndexedTree;
 pub use tree::Tree;
 

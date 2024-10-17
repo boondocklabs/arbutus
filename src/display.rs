@@ -1,23 +1,25 @@
-use std::{cell::Ref, fmt::Write};
+use std::fmt::Write;
 
-use crate::node::NodeRef;
+use crate::{node::Node, noderef::NodeRef};
 
 pub struct TreeDisplay;
 
 impl TreeDisplay {
-    pub fn format<Data, Id, F>(
-        node: &NodeRef<'_, Data, Id>,
+    pub fn format<R, F>(
+        node: &R,
         f: &mut std::fmt::Formatter<'_>,
         data_format: F,
     ) -> std::fmt::Result
     where
-        Id: Clone + std::fmt::Display,
-        Data: std::fmt::Debug,
-        F: Fn(Ref<'_, Data>, &mut std::fmt::Formatter<'_>) -> std::fmt::Result,
+        R: NodeRef,
+        F: Fn(
+            <<R as NodeRef>::Inner as Node>::DataRef<'_>,
+            &mut std::fmt::Formatter<'_>,
+        ) -> std::fmt::Result,
     {
         f.write_str("\n")?;
 
-        let mut iter = node.iter().peekable();
+        let mut iter = node.clone().into_iter().peekable();
 
         let mut root_children = false;
 

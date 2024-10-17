@@ -1,7 +1,15 @@
 use std::sync::atomic::AtomicU64;
 
+pub trait UniqueId: Clone + Ord + PartialEq + std::fmt::Debug + std::fmt::Display {
+    type Output;
+}
+
+impl UniqueId for u64 {
+    type Output = Self;
+}
+
 pub trait UniqueGenerator: Default + std::fmt::Debug + 'static {
-    type Output: Clone + std::fmt::Debug + std::fmt::Display;
+    type Output: UniqueId;
 
     /// Generate a unique value
     fn generate(&mut self) -> Self::Output;
@@ -22,12 +30,45 @@ impl UniqueGenerator for AtomicU64Generator {
 }
 
 #[derive(Default, Debug)]
-pub(crate) struct UuidGenerator;
+pub struct UuidGenerator;
+
+#[derive(Clone, Debug)]
+pub struct Uuid(uuid::Uuid);
+
+impl UniqueId for Uuid {
+    type Output = Self;
+}
+
+impl std::fmt::Display for Uuid {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0.to_string())
+    }
+}
+
+impl Ord for Uuid {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0.cmp(&other.0)
+    }
+}
+
+impl PartialOrd for Uuid {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.0.partial_cmp(&other.0)
+    }
+}
+
+impl PartialEq for Uuid {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.eq(&other.0)
+    }
+}
+
+impl Eq for Uuid {}
 
 impl UniqueGenerator for UuidGenerator {
-    type Output = uuid::Uuid;
+    type Output = Uuid;
 
-    fn generate(&mut self) -> uuid::Uuid {
-        uuid::Uuid::new_v4()
+    fn generate(&mut self) -> Uuid {
+        Uuid(uuid::Uuid::new_v4())
     }
 }

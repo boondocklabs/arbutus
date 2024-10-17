@@ -1,31 +1,175 @@
 use std::{
     cell::{Ref, RefCell, RefMut},
-    collections::VecDeque,
-    ops::Deref,
+    ops::{Deref, DerefMut},
     rc::Rc,
 };
 
 use tracing::debug;
 
-use crate::{display::TreeDisplay, iterator::NodeRefIter, NodeId};
+use crate::{
+    id::UniqueId,
+    noderef::{NodeRef, NodeRefRc, NodeRefRef},
+};
 
+pub trait Node: Sized {
+    type Data: std::fmt::Display;
+    type Id: UniqueId;
+    type DataRef<'b>: Deref<Target = Self::Data>
+    where
+        Self: 'b;
+    type DataRefMut<'b>: DerefMut<Target = Self::Data>
+    where
+        Self: 'b;
+    type NodeRef: NodeRef<Inner = Self>;
+
+    fn new(id: Self::Id, data: Self::Data, children: Option<Vec<Self::NodeRef>>) -> Self;
+
+    fn id(&self) -> &Self::Id;
+
+    fn data<'b>(&'b self) -> Self::DataRef<'b>;
+    fn data_mut<'b>(&'b mut self) -> Self::DataRefMut<'b>;
+
+    fn children<'b>(&'b self) -> Option<Ref<'b, Vec<Self::NodeRef>>>;
+
+    fn add_child(&mut self, node: Self::NodeRef);
+}
+
+/// TreeNodeSimple provides no interior mutability
 #[derive(Debug)]
-pub struct TreeNode<'tree, Data, Id = NodeId>
+pub struct TreeNodeSimple<Data, Id = crate::NodeId>
 where
-    Id: Clone + std::fmt::Display + 'tree,
-    Data: 'tree,
+    Id: UniqueId + 'static,
+    Data: std::fmt::Display + 'static,
+{
+    id: Id,
+    data: Data,
+    children: Option<Vec<NodeRefRef<Self>>>,
+}
+
+impl<Data, Id> Node for TreeNodeSimple<Data, Id>
+where
+    Id: UniqueId + 'static,
+    Data: std::fmt::Display + 'static,
+{
+    type Data = Data;
+    type Id = Id;
+    type DataRef<'b> = &'b Data;
+    type DataRefMut<'b> = &'b mut Data;
+
+    type NodeRef = NodeRefRef<Self>;
+
+    fn new(id: Self::Id, data: Self::Data, children: Option<Vec<NodeRefRef<Self>>>) -> Self {
+        Self { id, data, children }
+    }
+
+    fn id(&self) -> &Self::Id {
+        &self.id
+    }
+
+    fn data<'b>(&'b self) -> Self::DataRef<'b> {
+        todo!()
+    }
+
+    fn data_mut<'b>(&'b mut self) -> Self::DataRefMut<'b> {
+        &mut self.data
+    }
+
+    fn children<'b>(&'b self) -> Option<Ref<'b, Vec<Self::NodeRef>>> {
+        todo!()
+    }
+
+    fn add_child(&mut self, node: Self::NodeRef) {
+        if let Some(children) = &mut self.children {
+            children.push(node)
+        }
+    }
+}
+
+/// TreeNodeRefCell wraps each node in Rc and RefCell providing interior mutability
+#[derive(Debug)]
+pub struct TreeNodeRefCell<Data, Id = crate::NodeId>
+where
+    Id: UniqueId + 'static,
+    Data: std::fmt::Display + 'static,
 {
     id: Id,
     data: Rc<RefCell<Data>>,
-    children: Rc<Option<RefCell<Vec<NodeRef<'tree, Data, Id>>>>>,
+    children: Rc<Option<RefCell<Vec<NodeRefRc<Self>>>>>,
 }
 
-impl<'tree, Data, Id> Clone for TreeNode<'tree, Data, Id>
+impl<Data, Id> Node for TreeNodeRefCell<Data, Id>
 where
-    Id: Clone + std::fmt::Display,
+    Id: UniqueId + 'static,
+    Data: std::fmt::Display + 'static,
+{
+    type Data = Data;
+    type Id = Id;
+    type DataRef<'b> = Ref<'b, Self::Data>;
+    type DataRefMut<'b> = RefMut<'b, Self::Data>;
+    type NodeRef = NodeRefRc<Self>;
+
+    fn new(id: Self::Id, data: Self::Data, children: Option<Vec<Self::NodeRef>>) -> Self {
+        let children = children
+            .map(|children| RefCell::new(children.into_iter().map(|child| child).collect()));
+
+        debug!("Created Node ID {}", id);
+
+        TreeNodeRefCell {
+            id,
+            data: Rc::new(RefCell::new(data)),
+            children: Rc::new(children),
+        }
+    }
+
+    fn id(&self) -> &Self::Id {
+        &self.id
+    }
+
+    fn data<'b>(&'b self) -> Self::DataRef<'b> {
+        (*self.data).borrow()
+    }
+
+    fn data_mut<'b>(&'b mut self) -> Self::DataRefMut<'b> {
+        self.data.try_borrow_mut().unwrap()
+    }
+
+    fn children<'b>(&'b self) -> Option<Ref<'b, Vec<Self::NodeRef>>> {
+        if let Some(children) = &*self.children {
+            Some(children.borrow())
+        } else {
+            None
+        }
+    }
+
+    fn add_child(&mut self, node: NodeRefRc<Self>)
+    where
+        Id: 'static,
+        Data: 'static,
+    {
+        if self.children.is_none() {
+            debug!(
+                "Adding first child {} to node {}",
+                node.node().id(),
+                self.id()
+            );
+            self.children = Rc::new(Some(RefCell::new(vec![node])))
+        } else {
+            debug!("Adding child {} to node {}", node.node().id(), self.id());
+            let r = self.children.as_ref();
+            let r = r.as_ref().unwrap();
+            let mut r = r.borrow_mut();
+            r.push(node);
+        }
+    }
+}
+
+impl<Data, Id> Clone for TreeNodeRefCell<Data, Id>
+where
+    Id: UniqueId + 'static,
+    Data: std::fmt::Display + 'static,
 {
     fn clone(&self) -> Self {
-        TreeNode {
+        TreeNodeRefCell {
             id: self.id.clone(),
             data: self.data.clone(),
             children: self.children.clone(),
@@ -33,178 +177,11 @@ where
     }
 }
 
-impl<'tree, Data, Id> TreeNode<'tree, Data, Id>
+impl<Data, Id> TreeNodeRefCell<Data, Id>
 where
-    Id: Clone + std::fmt::Display,
+    Id: UniqueId + 'static,
+    Data: std::fmt::Display,
 {
-    pub fn new(id: Id, data: Data, children: Option<Vec<TreeNode<'tree, Data, Id>>>) -> Self {
-        let children = children.map(|children| {
-            RefCell::new(
-                children
-                    .into_iter()
-                    .map(|child| NodeRef::new(child))
-                    .collect(),
-            )
-        });
-
-        debug!("Created Node ID {}", id);
-
-        TreeNode {
-            id,
-            data: Rc::new(RefCell::new(data)),
-            children: Rc::new(children),
-        }
-    }
-
-    pub fn id(&self) -> Id {
-        self.id.clone()
-    }
-
-    pub fn children(&self) -> Option<&RefCell<Vec<NodeRef<'tree, Data, Id>>>> {
-        (*self.children).as_ref()
-    }
-
-    pub fn data<'b>(&'b self) -> Ref<'b, Data> {
-        self.data.borrow()
-    }
-
-    pub fn data_mut<'b>(&'b self) -> RefMut<'b, Data> {
-        self.data.borrow_mut()
-    }
-
-    pub fn add_child(&mut self, node: NodeRef<'tree, Data, Id>)
-    where
-        Id: 'static,
-    {
-        if self.children.is_none() {
-            debug!(
-                "Adding first child {} to node {}",
-                node.borrow().id(),
-                self.id()
-            );
-            self.children = Rc::new(Some(RefCell::new(vec![node])))
-        } else {
-            debug!("Adding child {} to node {}", node.borrow().id(), self.id());
-            self.children().unwrap().borrow_mut().push(node);
-        }
-    }
-}
-
-pub struct NodeRef<'node, Data, Id>
-where
-    Id: Clone + std::fmt::Display + 'node,
-    Data: 'node,
-{
-    node_ref: Rc<RefCell<TreeNode<'node, Data, Id>>>,
-}
-
-impl<'node, Data, Id> std::fmt::Display for NodeRef<'node, Data, Id>
-where
-    Id: Clone + std::fmt::Display + 'node,
-    Data: std::fmt::Debug + std::fmt::Display + 'node,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        TreeDisplay::format(self, f, |data, f| write!(f, "{}", data))
-    }
-}
-
-impl<'node, Data, Id> std::fmt::Debug for NodeRef<'node, Data, Id>
-where
-    Id: Clone + std::fmt::Display + 'node,
-    Data: std::fmt::Debug + 'node,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        TreeDisplay::format(self, f, |data, f| write!(f, "{:?}", data))
-    }
-}
-
-impl<'node, Data, Id> Clone for NodeRef<'node, Data, Id>
-where
-    Id: Clone + std::fmt::Display,
-{
-    fn clone(&self) -> Self {
-        Self {
-            node_ref: self.node_ref.clone(),
-        }
-    }
-}
-
-impl<'node, Data, Id> NodeRef<'node, Data, Id>
-where
-    Id: Clone + std::fmt::Display,
-{
-    pub fn new(node: TreeNode<'node, Data, Id>) -> Self {
-        Self {
-            node_ref: Rc::new(RefCell::new(node)),
-        }
-    }
-
-    pub fn node<'a>(&'a self) -> Ref<'a, TreeNode<'node, Data, Id>> {
-        self.node_ref.borrow()
-    }
-
-    pub fn with_data<'a, R, E, F>(&'a self, f: F) -> Result<R, E>
-    where
-        F: FnOnce(Ref<Data>) -> Result<R, E>,
-    {
-        let node = self.node_ref.borrow();
-        let data = node.data.borrow();
-        f(data)
-    }
-
-    pub fn with_data_mut<'a, R, E, F>(&'a self, f: F) -> Result<R, E>
-    where
-        F: FnOnce(RefMut<Data>) -> Result<R, E>,
-    {
-        let node = self.node_ref.borrow();
-        let data = node.data.borrow_mut();
-        f(data)
-    }
-
-    pub fn for_each<E, F>(&self, f: F) -> Result<(), E>
-    where
-        F: Fn(usize, NodeRef<Data, Id>) -> Result<(), E>,
-    {
-        // Create a stack with depth 0, and the initial node
-        let mut stack: VecDeque<(usize, NodeRef<Data, Id>)> = VecDeque::from([(0, self.clone())]);
-
-        loop {
-            let current = stack.pop_front();
-            if let None = current {
-                break;
-            };
-            let node = current.map(|node| {
-                node.1.node().children().map(|children| {
-                    children
-                        .borrow()
-                        .iter()
-                        .rev()
-                        .for_each(|child| stack.push_front((node.0 + 1, (*child).clone())))
-                });
-                node
-            });
-
-            if let Some(node) = node {
-                f(node.0, node.1)?
-            }
-        }
-        Ok(())
-    }
-
-    pub fn iter(&self) -> NodeRefIter<'node, Data, Id> {
-        NodeRefIter::new((*self).clone())
-    }
-}
-
-impl<'node, Data, Id> Deref for NodeRef<'node, Data, Id>
-where
-    Id: Clone + std::fmt::Display + 'static,
-{
-    type Target = RefCell<TreeNode<'node, Data, Id>>;
-
-    fn deref(&self) -> &Self::Target {
-        &*self.node_ref
-    }
 }
 
 #[cfg(test)]
@@ -214,8 +191,10 @@ mod tests {
 
     use crate::{
         index::{BTreeIndex, TreeIndex},
-        NodeId, Tree, TreeBuilder,
+        NodeId, NodeRefRc, Tree, TreeBuilder,
     };
+
+    use super::TreeNodeRefCell;
 
     #[derive(Debug)]
     #[allow(unused)]
@@ -232,6 +211,12 @@ mod tests {
         String(String),
     }
 
+    impl std::fmt::Display for TestData {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "{:?}", self)
+        }
+    }
+
     impl Default for TestData {
         fn default() -> Self {
             TestData::Foo
@@ -239,7 +224,8 @@ mod tests {
     }
 
     /// Create a simple tree for tests
-    fn simple_tree<'a>() -> Result<Option<Tree<'a, TestData, NodeId>>, TestError> {
+    fn simple_tree<'a>(
+    ) -> Result<Option<Tree<NodeRefRc<TreeNodeRefCell<TestData, NodeId>>>>, TestError> {
         TreeBuilder::<TestData, TestError>::new()
             .root(TestData::Foo, |foo| {
                 foo.child(TestData::Bar, |bar| {
@@ -261,13 +247,12 @@ mod tests {
             .done()
     }
 
+    type R = NodeRefRc<TreeNodeRefCell<TestData, NodeId>>;
+
     #[derive(Debug)]
-    struct App<'tree, 'index>
-    where
-        'tree: 'index,
-    {
-        _tree: Tree<'tree, TestData, NodeId>,
-        _index: BTreeIndex<'index, TestData>,
+    struct App {
+        _tree: Tree<R>,
+        _index: BTreeIndex<R>,
     }
 
     #[traced_test]

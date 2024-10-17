@@ -3,34 +3,54 @@
 //! The `NodeBuilder` and `TreeBuilder` types enable building tree structures in a composable way.
 //!
 
-use std::{cell::RefMut, marker::PhantomData};
+use std::marker::PhantomData;
 
 use tracing::{debug, debug_span};
 
 use crate::{
     id::UniqueGenerator,
-    node::{NodeRef, TreeNode},
-    Tree,
+    node::{Node, TreeNodeRefCell},
+    NodeRef, NodeRefRc, Tree,
 };
+
+type DefaultNodeRef<T> = NodeRefRc<T>;
+type DefaultNode<Data, IdGen> = TreeNodeRefCell<Data, <IdGen as UniqueGenerator>::Output>;
 
 /// A builder for constructing children from a parent node.
 ///
 /// The `NodeBuilder` type provides methods for adding child nodes to the current parent node.
 /// It is designed to be used with the `TreeBuilder` type.
 ///
-#[derive(Debug)]
-pub struct NodeBuilder<'a, 'tree, Data, E, IdGen = crate::IdGenerator>
-where
-    IdGen: UniqueGenerator,
+//#[derive(Debug)]
+pub struct NodeBuilder<
+    'a,
+    D,
+    E,
+    G = crate::IdGenerator,
+    N = DefaultNode<D, G>,
+    R = DefaultNodeRef<N>,
+> where
+    G: UniqueGenerator,
+    D: std::fmt::Display + 'static,
+    N: Node,
+    R: NodeRef,
 {
-    node: &'a mut TreeNode<'tree, Data, IdGen::Output>,
-    idgen: &'a mut IdGen,
-    _phantom: (PhantomData<Data>, PhantomData<E>),
+    node: &'a mut N,
+    idgen: &'a mut G,
+    _phantom: (
+        PhantomData<D>,
+        PhantomData<E>,
+        PhantomData<N>,
+        PhantomData<R>,
+    ),
 }
 
-impl<'a, 'tree, Data, E, IdGen> NodeBuilder<'a, 'tree, Data, E, IdGen>
+impl<'a, D, E, G, N, R> NodeBuilder<'a, D, E, G, N, R>
 where
-    IdGen: UniqueGenerator,
+    D: std::fmt::Display,
+    G: UniqueGenerator,
+    N: Node,
+    R: NodeRef,
 {
     /// Creates a new `NodeBuilder` instance.
     ///
@@ -38,38 +58,41 @@ where
     ///
     /// * `node`: The parent node to build children for.
     /// * `idgen`: The ID generator to use for child nodes.
-    pub fn new(node: &'a mut TreeNode<'tree, Data, IdGen::Output>, idgen: &'a mut IdGen) -> Self {
+    pub fn new(node: &'a mut N, idgen: &'a mut G) -> Self {
         debug!("Created new NodeBuilder for {}", node.id());
         Self {
             node,
             idgen,
-            _phantom: (PhantomData, PhantomData),
+            _phantom: (PhantomData, PhantomData, PhantomData, PhantomData),
         }
     }
 
-    /// Adds a child to the current parent node.
+    /// Adds a child to the current node.
     ///
     /// # Arguments
     ///
     /// * `data`: The data to associate with the child node.
     /// * `f`: A closure that takes the child builder and adds its own children.
-    pub fn child<F>(&mut self, data: Data, f: F) -> Result<(), E>
+    pub fn child<F>(&mut self, data: N::Data, f: F) -> Result<(), E>
     where
-        F: FnOnce(&mut NodeBuilder<'_, 'tree, Data, E, IdGen>) -> Result<(), E>,
+        F: FnOnce(&mut NodeBuilder<'_, D, E, G, N, R>) -> Result<(), E>,
+        N: Node<Id = G::Output>,
     {
         let id = self.idgen.generate();
-        let mut node = TreeNode::<Data, IdGen::Output>::new(id, data, None);
-        let mut node_builder = NodeBuilder::<Data, E, IdGen>::new(&mut node, &mut self.idgen);
+        let mut node = Node::new(id, data, None);
+        let mut node_builder = NodeBuilder::<D, E, G, N, R>::new(&mut node, &mut self.idgen);
 
         // Call the supplied closure with the NodeBuilder to add this node's children
         f(&mut node_builder)?;
 
-        self.node.add_child(NodeRef::new(node));
+        let r = NodeRef::new(node);
+
+        self.node.add_child(r);
         Ok(())
     }
 
     /// Get a mutable reference to the data in this node
-    pub fn data_mut<'b>(&'b mut self) -> RefMut<'b, Data> {
+    pub fn data_mut<'b>(&'b mut self) -> N::DataRefMut<'b> {
         self.node.data_mut()
     }
 }
@@ -89,7 +112,7 @@ where
 /// type MyData = String;
 /// type MyError = String;
 ///
-/// use arbutus::{TreeBuilder, TreeNode};
+/// use arbutus::{TreeBuilder, TreeNodeRefCell};
 /// let mut builder = TreeBuilder::<MyData, MyError>::new();
 /// let root_builder = builder.root("Root".to_string(), |root| { /* add children */ Ok(()) });
 ///
@@ -97,20 +120,22 @@ where
 /// let done = root_builder.unwrap().done();
 /// ```
 #[derive(Debug)]
-pub struct TreeBuilder<'tree, Data, E, IdGen = crate::IdGenerator>
+pub struct TreeBuilder<D, E, G = crate::IdGenerator, N = DefaultNode<D, G>, R = DefaultNodeRef<N>>
 where
-    IdGen: UniqueGenerator,
+    G: UniqueGenerator,
 {
-    idgen: IdGen,
-    root: Option<NodeRef<'tree, Data, IdGen::Output>>,
-    current: Option<NodeRef<'tree, Data, IdGen::Output>>,
+    idgen: G,
+    root: Option<R>,
     debug_span: tracing::Span,
-    _phantom: PhantomData<E>,
+    _phantom: (PhantomData<E>, PhantomData<N>, PhantomData<D>),
 }
 
-impl<'tree, Data, E, IdGen> TreeBuilder<'tree, Data, E, IdGen>
+impl<D, E, G, N, R> TreeBuilder<D, E, G, N, R>
 where
-    IdGen: UniqueGenerator,
+    D: std::fmt::Display,
+    G: UniqueGenerator,
+    N: Node,
+    R: NodeRef,
 {
     /// Creates a new `TreeBuilder` instance.
     pub fn new() -> Self {
@@ -122,16 +147,16 @@ where
         drop(_debug);
 
         Self {
-            idgen: IdGen::default(),
+            idgen: G::default(),
             root: None,
-            current: None,
+            //current: None,
             debug_span,
-            _phantom: PhantomData,
+            _phantom: (PhantomData, PhantomData, PhantomData),
         }
     }
 
     /// Returns the constructed tree when finished building it.
-    pub fn done(self) -> Result<Option<Tree<'tree, Data, IdGen::Output>>, E> {
+    pub fn done(self) -> Result<Option<Tree<R>>, E> {
         self.debug_span.in_scope(|| {
             debug!("Finished build tree");
 
@@ -149,17 +174,19 @@ where
     ///
     /// * `data`: The data to associate with the root node.
     /// * `f`: A closure that takes the root builder and adds its own children.
-    pub fn root<F>(mut self, data: Data, f: F) -> Result<Self, E>
+    pub fn root<F>(mut self, data: N::Data, f: F) -> Result<Self, E>
     where
-        Data: std::fmt::Debug + 'tree,
-        F: FnOnce(&mut NodeBuilder<'_, 'tree, Data, E, IdGen>) -> Result<(), E>,
+        D: std::fmt::Debug + 'static,
+        F: FnOnce(&mut NodeBuilder<'_, D, E, G, N, R>) -> Result<(), E>,
+        N: Node<NodeRef = R, Id = G::Output>,
+        R: NodeRef<Inner = N> + std::fmt::Debug,
     {
         let id = self.idgen.generate();
 
         self.debug_span.in_scope(|| {
-            let mut node = TreeNode::<Data, IdGen::Output>::new(id, data, None);
+            let mut node = Node::new(id, data, None);
 
-            let mut node_builder = NodeBuilder::<Data, E, IdGen>::new(&mut node, &mut self.idgen);
+            let mut node_builder = NodeBuilder::<D, E, G, N, R>::new(&mut node, &mut self.idgen);
 
             // Call the supplied closure with the NodeBuilder to add this node's children
             f(&mut node_builder)?;
@@ -168,7 +195,7 @@ where
 
             if self.root.is_none() {
                 debug!("Added root {node:#?}");
-                self.current = Some(node.clone());
+                //self.current = Some(node.clone());
                 self.root = Some(node);
             } else {
                 panic!("Root node already exists");
@@ -204,6 +231,12 @@ mod tests {
             Bar,
             String(String),
             Baz,
+        }
+
+        impl std::fmt::Display for TestData {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "{:?}", self)
+            }
         }
 
         let tree = TreeBuilder::<TestData, MyError>::new()

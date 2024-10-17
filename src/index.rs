@@ -1,30 +1,29 @@
 use std::collections::BTreeMap;
 
-use crate::{node::NodeRef, NodeId, Tree};
+use crate::{node::Node, noderef::NodeRef, Tree};
 
-pub trait TreeIndex<'index, Data, Id>: std::fmt::Debug
+pub trait TreeIndex<R>
 where
-    Id: Clone + std::fmt::Display + 'static,
+    R: NodeRef,
 {
     fn new() -> Self;
-    //fn from_node(start: &'index TreeNode<'index, Data, Id>) -> Self;
-    fn from_tree(root: &Tree<'index, Data, Id>) -> Self;
-    fn insert(&mut self, id: Id, node: NodeRef<'index, Data, Id>);
-    fn get(&self, id: &Id) -> Option<&NodeRef<'index, Data, Id>>;
+    fn from_tree(root: &Tree<R>) -> Self;
+    fn insert(&mut self, id: <<R as NodeRef>::Inner as Node>::Id, node: R);
+    fn get(&self, id: &<<R as NodeRef>::Inner as Node>::Id) -> Option<&R>;
+    fn get_mut(&mut self, id: &<<R as NodeRef>::Inner as Node>::Id) -> Option<&mut R>;
 }
 
 #[derive(Debug)]
-pub struct BTreeIndex<'index, Data, Id = NodeId>
+pub struct BTreeIndex<R>
 where
-    Id: Default + Clone + std::fmt::Display + 'static,
+    R: NodeRef,
 {
-    index: BTreeMap<Id, NodeRef<'index, Data, Id>>,
+    index: BTreeMap<<<R as NodeRef>::Inner as Node>::Id, R>,
 }
 
-impl<'index, Data, Id> TreeIndex<'index, Data, Id> for BTreeIndex<'index, Data, Id>
+impl<R> TreeIndex<R> for BTreeIndex<R>
 where
-    Id: std::fmt::Debug + std::fmt::Display + Clone + Ord + Default + 'static,
-    Data: std::fmt::Debug + 'static,
+    R: NodeRef + IntoIterator + Clone,
 {
     fn new() -> Self {
         Self {
@@ -32,21 +31,25 @@ where
         }
     }
 
-    fn from_tree(tree: &Tree<'index, Data, Id>) -> Self {
+    fn from_tree(tree: &Tree<R>) -> Self {
         let mut index = Self::new();
 
-        for node in tree.root().iter() {
-            index.insert(node.node().id(), node.clone());
+        for node in tree.root() {
+            index.insert(node.node().id().clone(), node.clone());
         }
 
         index
     }
 
-    fn insert(&mut self, id: Id, node: NodeRef<'index, Data, Id>) {
+    fn insert(&mut self, id: <<R as NodeRef>::Inner as Node>::Id, node: R) {
         self.index.insert(id, node);
     }
 
-    fn get(&self, id: &Id) -> Option<&NodeRef<'index, Data, Id>> {
+    fn get(&self, id: &<<R as NodeRef>::Inner as Node>::Id) -> Option<&R> {
         self.index.get(id)
+    }
+
+    fn get_mut(&mut self, id: &<<R as NodeRef>::Inner as Node>::Id) -> Option<&mut R> {
+        self.index.get_mut(id)
     }
 }

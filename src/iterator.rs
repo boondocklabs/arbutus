@@ -1,42 +1,43 @@
 use std::{collections::VecDeque, ops::Deref};
 
-use crate::node::NodeRef;
+use crate::node::Node;
+use crate::noderef::{NodeRef, NodeRefRef};
+use crate::NodeRefRc;
 
-pub struct IterNode<'iter, Data, Id>
+pub struct IterNode<R>
 where
-    Id: Clone + std::fmt::Display,
+    R: NodeRef,
 {
     depth: usize,
-    node: NodeRef<'iter, Data, Id>,
+    node: R,
 }
 
-impl<'iter, Data, Id> IterNode<'iter, Data, Id>
+impl<R> IterNode<R>
 where
-    Id: Clone + std::fmt::Display,
+    R: NodeRef,
 {
     pub fn depth(&self) -> usize {
         self.depth
     }
 }
 
-impl<'iter, Data, Id> Deref for IterNode<'iter, Data, Id>
+impl<R> Deref for IterNode<R>
 where
-    Id: Clone + std::fmt::Display,
+    R: NodeRef,
 {
-    type Target = NodeRef<'iter, Data, Id>;
+    type Target = R;
 
     fn deref(&self) -> &Self::Target {
         &self.node
     }
 }
 
-impl<'iter, Data, Id> IntoIterator for NodeRef<'iter, Data, Id>
+impl<N> IntoIterator for NodeRefRc<N>
 where
-    Id: Clone + std::fmt::Display + 'iter,
-    Data: Clone + std::fmt::Debug + 'iter,
+    N: Node<NodeRef = Self> + 'static,
 {
-    type Item = IterNode<'iter, Data, Id>;
-    type IntoIter = NodeRefIter<'iter, Data, Id>;
+    type Item = IterNode<Self>;
+    type IntoIter = NodeRefIter<Self>;
 
     fn into_iter(self) -> Self::IntoIter {
         // Create an iterator starting with the root node in the stack
@@ -44,30 +45,43 @@ where
     }
 }
 
-pub struct NodeRefIter<'iter, Data, Id>
+impl<N> IntoIterator for NodeRefRef<N>
 where
-    Id: Clone + std::fmt::Display + 'iter,
+    N: Node<NodeRef = Self> + 'static,
 {
-    stack: VecDeque<(usize, NodeRef<'iter, Data, Id>)>,
+    type Item = IterNode<Self>;
+    type IntoIter = NodeRefIter<Self>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        // Create an iterator starting with the root node in the stack
+        NodeRefIter::new(self)
+    }
 }
 
-impl<'iter, Data, Id> NodeRefIter<'iter, Data, Id>
+pub struct NodeRefIter<R>
 where
-    Id: Clone + std::fmt::Display + 'iter,
+    R: NodeRef,
 {
-    pub fn new(node: NodeRef<'iter, Data, Id>) -> Self {
+    stack: VecDeque<(usize, R)>,
+}
+
+impl<R> NodeRefIter<R>
+where
+    R: NodeRef,
+{
+    pub fn new(node: R) -> Self {
         Self {
             stack: VecDeque::from([(0, node)]),
         }
     }
 }
 
-impl<'iter, Data, Id> Iterator for NodeRefIter<'iter, Data, Id>
+impl<R> Iterator for NodeRefIter<R>
 where
-    Data: std::fmt::Debug + 'iter,
-    Id: Clone + std::fmt::Display + 'iter,
+    R: NodeRef,
+    //<<R as NodeRef>::Inner as Node>::NodeRef
 {
-    type Item = IterNode<'iter, Data, Id>;
+    type Item = IterNode<R>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let current = self.stack.pop_front();
@@ -75,7 +89,6 @@ where
         current.map(|node| {
             node.1.node().children().map(|children| {
                 children
-                    .borrow()
                     .iter()
                     .rev()
                     .for_each(|child| self.stack.push_front((node.0 + 1, (*child).clone())))
