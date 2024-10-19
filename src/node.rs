@@ -24,10 +24,14 @@ pub trait Node: Sized {
 
     fn new(id: Self::Id, data: Self::Data, children: Option<Vec<Self::NodeRef>>) -> Self;
 
+    fn with_parent(self, parent: Self::NodeRef) -> Self;
+
     fn id(&self) -> &Self::Id;
 
     fn data<'b>(&'b self) -> Self::DataRef<'b>;
     fn data_mut<'b>(&'b mut self) -> Self::DataRefMut<'b>;
+
+    fn parent<'b>(&'b self) -> Option<&'b Self::NodeRef>;
 
     fn children<'b>(&'b self) -> Option<Ref<'b, Vec<Self::NodeRef>>>;
 
@@ -43,6 +47,7 @@ where
 {
     id: Id,
     data: Data,
+    parent: Box<Option<NodeRefRef<Self>>>,
     children: Option<Vec<NodeRefRef<Self>>>,
 }
 
@@ -59,7 +64,17 @@ where
     type NodeRef = NodeRefRef<Self>;
 
     fn new(id: Self::Id, data: Self::Data, children: Option<Vec<NodeRefRef<Self>>>) -> Self {
-        Self { id, data, children }
+        Self {
+            id,
+            data,
+            children,
+            parent: Box::new(None),
+        }
+    }
+
+    fn with_parent(mut self, parent: Self::NodeRef) -> Self {
+        self.parent = Box::new(Some(parent));
+        self
     }
 
     fn id(&self) -> &Self::Id {
@@ -83,6 +98,10 @@ where
             children.push(node)
         }
     }
+
+    fn parent<'b>(&'b self) -> Option<&'b Self::NodeRef> {
+        (&*self.parent).as_ref()
+    }
 }
 
 /// TreeNodeRefCell wraps each node in Rc and RefCell providing interior mutability
@@ -94,6 +113,7 @@ where
 {
     id: Id,
     data: Rc<RefCell<Data>>,
+    parent: Option<NodeRefRc<Self>>,
     children: Rc<Option<RefCell<Vec<NodeRefRc<Self>>>>>,
 }
 
@@ -118,7 +138,13 @@ where
             id,
             data: Rc::new(RefCell::new(data)),
             children: Rc::new(children),
+            parent: None,
         }
+    }
+
+    fn with_parent(mut self, parent: Self::NodeRef) -> Self {
+        self.parent = Some(parent);
+        self
     }
 
     fn id(&self) -> &Self::Id {
@@ -161,6 +187,10 @@ where
             r.push(node);
         }
     }
+
+    fn parent<'b>(&'b self) -> Option<&'b Self::NodeRef> {
+        self.parent.as_ref()
+    }
 }
 
 impl<Data, Id> Clone for TreeNodeRefCell<Data, Id>
@@ -173,6 +203,7 @@ where
             id: self.id.clone(),
             data: self.data.clone(),
             children: self.children.clone(),
+            parent: self.parent.clone(),
         }
     }
 }

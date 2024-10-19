@@ -11,23 +11,31 @@ pub struct Tree<R>
 where
     R: NodeRef + 'static,
 {
-    root: R,
+    root: Option<R>,
 }
 
 impl<R> Tree<R>
 where
     R: NodeRef + 'static,
 {
+    pub fn new() -> Self {
+        Self { root: None }
+    }
+
     pub fn from_nodes(root: R) -> Self {
-        Self { root }
+        Self { root: Some(root) }
     }
 
     pub fn root(&self) -> R {
-        self.root.clone()
+        self.root.as_ref().unwrap().clone()
     }
 
     pub fn root_ref<'a>(&'a self) -> &'a R {
-        &self.root
+        self.root.as_ref().unwrap()
+    }
+
+    pub fn root_ref_mut<'a>(&'a mut self) -> &'a mut R {
+        self.root.as_mut().unwrap()
     }
 }
 
@@ -38,7 +46,7 @@ where
     type Target = R;
 
     fn deref(&self) -> &Self::Target {
-        &self.root
+        self.root.as_ref().unwrap()
     }
 }
 
@@ -55,6 +63,14 @@ impl<R> IndexedTree<R>
 where
     R: NodeRef + 'static,
 {
+    // Create a new empty indexed tree
+    pub fn new() -> Self {
+        Self {
+            tree: Tree::new(),
+            index: BTreeIndex::new(),
+        }
+    }
+
     pub fn from_tree(tree: Tree<R>) -> Self {
         let index = BTreeIndex::from_tree(&tree);
 

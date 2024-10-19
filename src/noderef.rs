@@ -1,7 +1,7 @@
 use std::{
     cell::{Ref, RefCell, RefMut},
     collections::VecDeque,
-    ops::Deref,
+    ops::{Deref, DerefMut},
     rc::Rc,
 };
 
@@ -19,7 +19,7 @@ pub trait NodeRef: Clone + IntoIterator<Item = IterNode<Self>> {
     where
         Self: 'b;
 
-    type InnerRefMut<'b>: Deref<Target = Self::Inner>
+    type InnerRefMut<'b>: DerefMut<Target = Self::Inner>
     where
         Self: 'b;
 
@@ -34,6 +34,7 @@ pub trait NodeRef: Clone + IntoIterator<Item = IterNode<Self>> {
     // A mutable reference
     type DataRefMut<'b>: 'b;
 
+    // Create a new NodeRef with the supplied Inner node
     fn new(node: Self::Inner) -> Self;
 
     /// Get a reference to the inner node
@@ -234,7 +235,9 @@ where
     }
 
     fn node<'b>(&'b self) -> Self::InnerRef<'b> {
-        (&*self.node_ref).borrow()
+        let r: &'b RefCell<T> = &self.node_ref;
+        r.borrow()
+        //(&*self.node_ref).borrow()
     }
 
     fn node_mut<'b>(&'b mut self) -> Self::InnerRefMut<'b> {

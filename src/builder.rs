@@ -32,10 +32,10 @@ pub struct NodeBuilder<
 > where
     G: UniqueGenerator,
     D: std::fmt::Display + 'static,
-    N: Node,
-    R: NodeRef,
+    N: Node<Id = G::Output, NodeRef = R>,
+    R: NodeRef<Inner = N>,
 {
-    node: &'a mut N,
+    node_ref: &'a mut R,
     idgen: &'a mut G,
     _phantom: (
         PhantomData<D>,
@@ -49,8 +49,8 @@ impl<'a, D, E, G, N, R> NodeBuilder<'a, D, E, G, N, R>
 where
     D: std::fmt::Display,
     G: UniqueGenerator,
-    N: Node,
-    R: NodeRef,
+    N: Node<Id = G::Output, NodeRef = R>,
+    R: NodeRef<Inner = N>,
 {
     /// Creates a new `NodeBuilder` instance.
     ///
@@ -58,10 +58,10 @@ where
     ///
     /// * `node`: The parent node to build children for.
     /// * `idgen`: The ID generator to use for child nodes.
-    pub fn new(node: &'a mut N, idgen: &'a mut G) -> Self {
-        debug!("Created new NodeBuilder for {}", node.id());
+    pub fn new(node_ref: &'a mut R, idgen: &'a mut G) -> Self {
+        debug!("Created new NodeBuilder for {}", node_ref.node().id());
         Self {
-            node,
+            node_ref,
             idgen,
             _phantom: (PhantomData, PhantomData, PhantomData, PhantomData),
         }
@@ -76,24 +76,31 @@ where
     pub fn child<F>(&mut self, data: N::Data, f: F) -> Result<(), E>
     where
         F: FnOnce(&mut NodeBuilder<'_, D, E, G, N, R>) -> Result<(), E>,
-        N: Node<Id = G::Output>,
     {
+        // Generate a new ID for this child
         let id = self.idgen.generate();
-        let mut node = Node::new(id, data, None);
-        let mut node_builder = NodeBuilder::<D, E, G, N, R>::new(&mut node, &mut self.idgen);
+
+        // Create a new node for this child
+        let node = N::new(id, data, None).with_parent(self.node_ref.clone());
+        let mut child_node_ref = R::new(node);
+        let mut node_builder =
+            NodeBuilder::<D, E, G, N, R>::new(&mut child_node_ref, &mut self.idgen);
 
         // Call the supplied closure with the NodeBuilder to add this node's children
         f(&mut node_builder)?;
 
-        let r = NodeRef::new(node);
+        // Create a new NodeRef for this child node
 
-        self.node.add_child(r);
+        self.node_ref.node_mut().add_child(child_node_ref);
         Ok(())
     }
 
-    /// Get a mutable reference to the data in this node
-    pub fn data_mut<'b>(&'b mut self) -> N::DataRefMut<'b> {
-        self.node.data_mut()
+    pub fn node<'b>(&'b mut self) -> &'b R {
+        &self.node_ref
+    }
+
+    pub fn node_mut<'b>(&'b mut self) -> &'b mut R {
+        &mut self.node_ref
     }
 }
 
@@ -184,19 +191,18 @@ where
         let id = self.idgen.generate();
 
         self.debug_span.in_scope(|| {
-            let mut node = Node::new(id, data, None);
+            let node = Node::new(id, data, None);
+            let mut node_ref = NodeRef::new(node);
 
-            let mut node_builder = NodeBuilder::<D, E, G, N, R>::new(&mut node, &mut self.idgen);
+            let mut node_builder =
+                NodeBuilder::<D, E, G, N, R>::new(&mut node_ref, &mut self.idgen);
 
             // Call the supplied closure with the NodeBuilder to add this node's children
             f(&mut node_builder)?;
 
-            let node = NodeRef::new(node);
-
             if self.root.is_none() {
-                debug!("Added root {node:#?}");
-                //self.current = Some(node.clone());
-                self.root = Some(node);
+                debug!("Added root {node_ref:#?}");
+                self.root = Some(node_ref);
             } else {
                 panic!("Root node already exists");
                 //debug!("Adding node as child of current")
