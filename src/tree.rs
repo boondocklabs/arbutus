@@ -56,6 +56,7 @@ where
     R: NodeRef + 'static,
 {
     tree: Tree<R>,
+    leaves: Vec<R>,
     index: BTreeIndex<R>,
 }
 
@@ -67,6 +68,7 @@ where
     pub fn new() -> Self {
         Self {
             tree: Tree::new(),
+            leaves: Vec::new(),
             index: BTreeIndex::new(),
         }
     }
@@ -74,7 +76,20 @@ where
     pub fn from_tree(tree: Tree<R>) -> Self {
         let index = BTreeIndex::from_tree(&tree);
 
-        Self { tree, index }
+        let mut leaves = Vec::new();
+
+        // Find all leaves
+        for node in tree.root() {
+            if node.node().children().is_none() {
+                leaves.push(node.clone())
+            }
+        }
+
+        Self {
+            tree,
+            index,
+            leaves,
+        }
     }
 
     pub fn tree(&self) -> &Tree<R> {
@@ -91,6 +106,10 @@ where
 
     pub fn get_node_mut(&mut self, id: &<<R as NodeRef>::Inner as Node>::Id) -> Option<&mut R> {
         self.index.get_mut(id)
+    }
+
+    pub fn leaves<'b>(&'b self) -> &'b Vec<R> {
+        &self.leaves
     }
 }
 
