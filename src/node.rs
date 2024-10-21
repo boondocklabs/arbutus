@@ -35,6 +35,11 @@ pub trait Node: Sized {
 
     fn children<'b>(&'b self) -> Option<Ref<'b, Vec<Self::NodeRef>>>;
 
+    /// Return the number of child nodes for this node
+    fn num_children(&self) -> usize {
+        self.children().map(|v| v.len()).unwrap_or(0)
+    }
+
     fn add_child(&mut self, node: Self::NodeRef);
 }
 
