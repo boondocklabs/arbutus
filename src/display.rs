@@ -65,6 +65,7 @@ impl TreeDisplay {
                     }
                 }
 
+                write!(f, " {}: ", node.node().id())?;
                 data_format(node.node().data(), f)?;
 
                 f.write_char('\n')?;
