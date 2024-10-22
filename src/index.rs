@@ -13,6 +13,7 @@ where
     fn get(&self, id: &<<R as NodeRef>::Inner as Node>::Id) -> Option<&R>;
     fn get_mut(&mut self, id: &<<R as NodeRef>::Inner as Node>::Id) -> Option<&mut R>;
     fn remove(&mut self, id: &<<R as NodeRef>::Inner as Node>::Id) -> Option<R>;
+    fn get_ids(&self) -> Vec<<<R as NodeRef>::Inner as Node>::Id>;
 }
 
 #[derive(Debug)]
@@ -59,5 +60,9 @@ where
 
     fn remove(&mut self, id: &<<R as NodeRef>::Inner as Node>::Id) -> Option<R> {
         self.index.remove(id)
+    }
+
+    fn get_ids(&self) -> Vec<<<R as NodeRef>::Inner as Node>::Id> {
+        self.index.keys().map(|k| *k).collect()
     }
 }

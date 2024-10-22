@@ -11,8 +11,8 @@ use crate::{
     noderef::{NodeRef, NodeRefRc, NodeRefRef},
 };
 
-pub trait Node: Sized {
-    type Data: std::fmt::Display;
+pub trait Node: Sized + std::hash::Hash {
+    type Data: std::hash::Hash + std::fmt::Display;
     type Id: UniqueId;
     type DataRef<'b>: Deref<Target = Self::Data>
     where
@@ -26,7 +26,7 @@ pub trait Node: Sized {
 
     fn with_parent(self, parent: Self::NodeRef) -> Self;
 
-    fn id(&self) -> &Self::Id;
+    fn id(&self) -> Self::Id;
 
     fn data<'b>(&'b self) -> Self::DataRef<'b>;
     fn data_mut<'b>(&'b mut self) -> Self::DataRefMut<'b>;
@@ -35,6 +35,7 @@ pub trait Node: Sized {
     fn parent_mut<'b>(&'b mut self) -> Option<&'b mut Self::NodeRef>;
 
     fn children<'b>(&'b self) -> Option<Ref<'b, Vec<Self::NodeRef>>>;
+    fn children_mut<'b>(&'b self) -> Option<RefMut<'b, Vec<Self::NodeRef>>>;
 
     /// Return the number of child nodes for this node
     fn num_children(&self) -> usize {
@@ -43,6 +44,23 @@ pub trait Node: Sized {
 
     /// Add a new child node to this node
     fn add_child(&mut self, node: Self::NodeRef);
+
+    /// Insert a child node to this node at the specified index
+    fn insert_child(&self, node: Self::NodeRef, index: usize) -> Option<()> {
+        let mut children = self.children_mut()?;
+
+        if index <= children.len() {
+            children.insert(index, node);
+            Some(())
+        } else {
+            tracing::error!(
+                "Attempted to insert child with index {} into children with length {}",
+                index,
+                children.len()
+            );
+            None
+        }
+    }
 
     /// Delete a child node from this node at the specified index
     fn remove_child_index(&mut self, index: usize);
@@ -53,7 +71,7 @@ pub trait Node: Sized {
 pub struct TreeNodeSimple<Data, Id = crate::NodeId>
 where
     Id: UniqueId + 'static,
-    Data: std::fmt::Display + 'static,
+    Data: std::hash::Hash + std::fmt::Display + 'static,
 {
     id: Id,
     data: Data,
@@ -61,10 +79,20 @@ where
     children: Option<Vec<NodeRefRef<Self>>>,
 }
 
+impl<Data, Id> std::hash::Hash for TreeNodeSimple<Data, Id>
+where
+    Id: UniqueId + 'static,
+    Data: std::hash::Hash + std::fmt::Display + 'static,
+{
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.data().hash(state)
+    }
+}
+
 impl<Data, Id> Node for TreeNodeSimple<Data, Id>
 where
     Id: UniqueId + 'static,
-    Data: std::fmt::Display + 'static,
+    Data: std::hash::Hash + std::fmt::Display + 'static,
 {
     type Data = Data;
     type Id = Id;
@@ -87,8 +115,8 @@ where
         self
     }
 
-    fn id(&self) -> &Self::Id {
-        &self.id
+    fn id(&self) -> Self::Id {
+        self.id.clone()
     }
 
     fn data<'b>(&'b self) -> Self::DataRef<'b> {
@@ -100,6 +128,10 @@ where
     }
 
     fn children<'b>(&'b self) -> Option<Ref<'b, Vec<Self::NodeRef>>> {
+        todo!()
+    }
+
+    fn children_mut<'b>(&'b self) -> Option<RefMut<'b, Vec<Self::NodeRef>>> {
         todo!()
     }
 
@@ -129,7 +161,7 @@ where
 pub struct TreeNodeRefCell<Data, Id = crate::NodeId>
 where
     Id: UniqueId + 'static,
-    Data: std::fmt::Display + 'static,
+    Data: std::hash::Hash + std::fmt::Display + 'static,
 {
     id: Id,
     data: Rc<RefCell<Data>>,
@@ -137,10 +169,20 @@ where
     children: Rc<Option<RefCell<Vec<NodeRefRc<Self>>>>>,
 }
 
+impl<Data, Id> std::hash::Hash for TreeNodeRefCell<Data, Id>
+where
+    Id: UniqueId + 'static,
+    Data: std::hash::Hash + std::fmt::Display + 'static,
+{
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.data().hash(state)
+    }
+}
+
 impl<Data, Id> Node for TreeNodeRefCell<Data, Id>
 where
     Id: UniqueId + 'static,
-    Data: std::fmt::Display + 'static,
+    Data: std::hash::Hash + std::fmt::Display + 'static,
 {
     type Data = Data;
     type Id = Id;
@@ -167,8 +209,8 @@ where
         self
     }
 
-    fn id(&self) -> &Self::Id {
-        &self.id
+    fn id(&self) -> Self::Id {
+        self.id
     }
 
     fn data<'b>(&'b self) -> Self::DataRef<'b> {
@@ -182,6 +224,14 @@ where
     fn children<'b>(&'b self) -> Option<Ref<'b, Vec<Self::NodeRef>>> {
         if let Some(children) = &*self.children {
             Some(children.borrow())
+        } else {
+            None
+        }
+    }
+
+    fn children_mut<'b>(&'b self) -> Option<RefMut<'b, Vec<Self::NodeRef>>> {
+        if let Some(children) = &*self.children {
+            Some(children.borrow_mut())
         } else {
             None
         }
@@ -226,7 +276,7 @@ where
 impl<Data, Id> Clone for TreeNodeRefCell<Data, Id>
 where
     Id: UniqueId + 'static,
-    Data: std::fmt::Display + 'static,
+    Data: std::hash::Hash + std::fmt::Display + 'static,
 {
     fn clone(&self) -> Self {
         TreeNodeRefCell {
@@ -236,13 +286,6 @@ where
             parent: self.parent.clone(),
         }
     }
-}
-
-impl<Data, Id> TreeNodeRefCell<Data, Id>
-where
-    Id: UniqueId + 'static,
-    Data: std::fmt::Display,
-{
 }
 
 #[cfg(test)]
@@ -263,7 +306,7 @@ mod tests {
         Fail,
     }
 
-    #[derive(Debug, Clone)]
+    #[derive(Debug, Clone, Hash)]
     #[allow(unused)]
     enum TestData {
         Foo,
@@ -284,7 +327,7 @@ mod tests {
         }
     }
 
-    /// Create a simple tree for tests
+    /// Create a simple tree for tests using the TreeBuilder
     fn simple_tree<'a>(
     ) -> Result<Option<Tree<NodeRefRc<TreeNodeRefCell<TestData, NodeId>>>>, TestError> {
         TreeBuilder::<TestData, TestError>::new()
@@ -321,12 +364,9 @@ mod tests {
     fn test_tree() {
         let tree = simple_tree().unwrap().unwrap();
 
-        let index = BTreeIndex::from_tree(&tree);
+        // Create an indexed tree
+        let tree = tree.index();
 
-        let app = App {
-            _tree: tree,
-            _index: index,
-        }; // index };
-        info!("{app:#?}");
+        println!("{:?}", tree);
     }
 }

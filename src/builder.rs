@@ -59,7 +59,6 @@ where
     /// * `node`: The parent node to build children for.
     /// * `idgen`: The ID generator to use for child nodes.
     pub fn new(node_ref: &'a mut R, idgen: &'a mut G) -> Self {
-        debug!("Created new NodeBuilder for {}", node_ref.node().id());
         Self {
             node_ref,
             idgen,
@@ -148,9 +147,7 @@ where
     pub fn new() -> Self {
         let debug_span = debug_span!("TreeBuilder");
         let _debug = debug_span.enter();
-
         debug!("Created new TreeBuilder");
-
         drop(_debug);
 
         Self {
@@ -168,7 +165,7 @@ where
             debug!("Finished build tree");
 
             if let Some(root) = self.root {
-                Ok(Some(Tree::from_nodes(root)))
+                Ok(Some(Tree::from_node(root)))
             } else {
                 Ok(None)
             }
@@ -201,7 +198,7 @@ where
             f(&mut node_builder)?;
 
             if self.root.is_none() {
-                debug!("Added root {node_ref:#?}");
+                debug!("Added root");
                 self.root = Some(node_ref);
             } else {
                 panic!("Root node already exists");
@@ -230,7 +227,7 @@ mod tests {
             Fail(String),
         }
 
-        #[derive(Debug)]
+        #[derive(Debug, Hash)]
         #[allow(unused)]
         enum TestData {
             Foo,
@@ -247,12 +244,7 @@ mod tests {
 
         let tree = TreeBuilder::<TestData, MyError>::new()
             .root(TestData::Foo, |foo| {
-                debug!("Foo builder closure");
-
-                foo.child(TestData::Bar, |bar| {
-                    debug!("Bar builder closure");
-                    bar.child(TestData::Baz, |_| Ok(()))
-                })?;
+                foo.child(TestData::Bar, |bar| bar.child(TestData::Baz, |_| Ok(())))?;
 
                 foo.child(TestData::String("Hello".into()), |_| Ok(()))?;
 
@@ -260,6 +252,5 @@ mod tests {
             })
             .unwrap()
             .done();
-        info!("{tree:#?}");
     }
 }

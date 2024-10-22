@@ -1,6 +1,11 @@
-use std::{collections::HashSet, ops::Deref};
+use std::{
+    collections::HashSet,
+    hash::{Hash as _, Hasher},
+    ops::Deref,
+};
 
 use tracing::debug;
+use xxhash_rust::xxh64::Xxh64;
 
 use crate::{
     index::{BTreeIndex, TreeIndex},
@@ -8,12 +13,23 @@ use crate::{
     noderef::NodeRef,
 };
 
-#[derive(Debug)]
 pub struct Tree<R>
 where
     R: NodeRef + 'static,
 {
     root: Option<R>,
+}
+
+impl<R> std::fmt::Debug for Tree<R>
+where
+    R: NodeRef + 'static,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Tree")
+            .field("hash", &format_args!("0x{:X}", self.xxhash()))
+            .field("depth", &self.depth())
+            .finish()
+    }
 }
 
 impl<R> Tree<R>
@@ -24,37 +40,62 @@ where
         Self { root: None }
     }
 
-    pub fn from_nodes(root: R) -> Self {
-        Self { root: Some(root) }
-    }
-
-    pub fn root(&self) -> R {
-        self.root.as_ref().unwrap().clone()
-    }
-
-    pub fn root_ref<'a>(&'a self) -> &'a R {
-        self.root.as_ref().unwrap()
-    }
-
-    pub fn root_ref_mut<'a>(&'a mut self) -> &'a mut R {
-        self.root.as_mut().unwrap()
-    }
-
+    /// Convert this tree into an [`IndexedTree`]
     pub fn index(self) -> IndexedTree<R> {
         IndexedTree::from_tree(self)
     }
 
+    /// Get the maximum depth of the tree
+    pub fn depth(&self) -> usize {
+        // The iterator yields IterNode's which have a depth() method,
+        // so we .map() to yield the depth as usize, and .max()
+        // to get the maximum depth.
+        self.root().into_iter().map(|f| f.depth()).max().unwrap()
+    }
+
+    /// Get the xxh64 hash of the tree. This includes all children
+    pub fn xxhash(&self) -> u64 {
+        let mut hasher = Xxh64::new(0);
+        for node in self.root() {
+            // Include the node depth in the hash
+            node.depth().hash(&mut hasher);
+            node.node().hash(&mut hasher);
+        }
+        hasher.finish()
+    }
+
+    /// Create a [`Tree`] container from a root [`NodeRef`]
+    pub fn from_node(root: R) -> Self {
+        Self { root: Some(root) }
+    }
+
+    /// Get the root [`NodeRef`] of the tree
+    pub fn root(&self) -> R {
+        self.root.as_ref().unwrap().clone()
+    }
+
+    /// Get a reference to the root [`NodeRef`] of the tree
+    pub fn root_ref<'a>(&'a self) -> &'a R {
+        self.root.as_ref().unwrap()
+    }
+
+    /// Get a mutable reference to the root [`NodeRef`] of the tree
+    pub fn root_ref_mut<'a>(&'a mut self) -> &'a mut R {
+        self.root.as_mut().unwrap()
+    }
+
+    /// Remove the provided [`NodeRef`] from the tree
     pub fn remove_node(&mut self, node: &R) {
         let node_id = node.node().id().clone();
         debug!("Removing node id {node_id}");
 
         let mut index = None;
 
-        // Remove the node from the parents children vec
+        // Remove the node from the parent children vec
         if let Some(parent) = node.clone().node().parent() {
             if let Some(children) = parent.node().children() {
                 for child in (&*children).iter().enumerate() {
-                    if *child.1.node().id() == node_id {
+                    if child.1.node().id() == node_id {
                         debug!("Found child node at index {}", child.0);
                         // Found index of node to remove
                         index = Some(child.0);
@@ -73,6 +114,10 @@ where
                 .remove_child_index(index);
         }
     }
+
+    pub fn insert_node(&mut self, parent: &R, index: usize, node: R) -> Option<()> {
+        parent.node().insert_child(node, index)
+    }
 }
 
 impl<R> Deref for Tree<R>
@@ -86,7 +131,6 @@ where
     }
 }
 
-#[derive(Debug)]
 pub struct IndexedTree<R>
 where
     R: NodeRef + 'static,
@@ -94,6 +138,23 @@ where
     tree: Tree<R>,
     leaves: Vec<R>,
     index: BTreeIndex<R>,
+}
+
+impl<R> std::fmt::Debug for IndexedTree<R>
+where
+    R: NodeRef + std::fmt::Debug + 'static,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let leaf_ids: Vec<<<R as NodeRef>::Inner as Node>::Id> =
+            self.leaves.iter().map(|leaf| leaf.node().id()).collect();
+        let ids = self.index.get_ids();
+
+        f.debug_struct("IndexedTree")
+            .field("tree", &self.tree)
+            .field("leaf_ids", &leaf_ids)
+            .field("index_ids", &ids)
+            .finish()
+    }
 }
 
 impl<R> IndexedTree<R>
@@ -162,7 +223,21 @@ where
             let _removed = self.index.remove(&id)?;
 
             // Remove from leaves
-            self.leaves.retain(|node| *node.node().id() != id);
+            self.leaves.retain(|node| node.node().id() != id);
+        }
+
+        Some(())
+    }
+
+    pub fn insert_node(&mut self, parent: &R, index: usize, node: R) -> Option<()> {
+        self.tree.insert_node(parent, index, node.clone())?;
+
+        for node in node.into_iter() {
+            let id = node.node().id().clone();
+            self.index.insert(id, node.clone());
+            if node.node().num_children() == 0 {
+                self.leaves.push(node.clone());
+            }
         }
 
         Some(())
@@ -194,6 +269,7 @@ where
     }
 }
 
+/// Deref IndexedTree into Tree
 impl<R> Deref for IndexedTree<R>
 where
     R: NodeRef + 'static,

@@ -11,6 +11,7 @@ readme = "README.md"
 [dependencies]
 tracing = "0.1.40"
 uuid = { version = "1.10.0", features = ["js", "v4"] }
+xxhash-rust = { version = "0.8.12", features = ["xxh64"] }
 
 [dev-dependencies]
 tracing = "0.1.40"

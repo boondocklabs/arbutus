@@ -9,6 +9,7 @@
 //! flexibility, and performance.
 
 mod builder;
+mod compare;
 mod display;
 mod id;
 mod index;
