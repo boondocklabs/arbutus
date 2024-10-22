@@ -8,9 +8,11 @@ where
 {
     fn new() -> Self;
     fn from_tree(root: &Tree<R>) -> Self;
+    fn from_node(node: &R) -> Self;
     fn insert(&mut self, id: <<R as NodeRef>::Inner as Node>::Id, node: R);
     fn get(&self, id: &<<R as NodeRef>::Inner as Node>::Id) -> Option<&R>;
     fn get_mut(&mut self, id: &<<R as NodeRef>::Inner as Node>::Id) -> Option<&mut R>;
+    fn remove(&mut self, id: &<<R as NodeRef>::Inner as Node>::Id) -> Option<R>;
 }
 
 #[derive(Debug)]
@@ -32,12 +34,14 @@ where
     }
 
     fn from_tree(tree: &Tree<R>) -> Self {
-        let mut index = Self::new();
+        Self::from_node(&tree.root())
+    }
 
-        for node in tree.root() {
+    fn from_node(node: &R) -> Self {
+        let mut index = Self::new();
+        for node in node.clone().into_iter() {
             index.insert(node.node().id().clone(), node.clone());
         }
-
         index
     }
 
@@ -51,5 +55,9 @@ where
 
     fn get_mut(&mut self, id: &<<R as NodeRef>::Inner as Node>::Id) -> Option<&mut R> {
         self.index.get_mut(id)
+    }
+
+    fn remove(&mut self, id: &<<R as NodeRef>::Inner as Node>::Id) -> Option<R> {
+        self.index.remove(id)
     }
 }

@@ -32,6 +32,7 @@ pub trait Node: Sized {
     fn data_mut<'b>(&'b mut self) -> Self::DataRefMut<'b>;
 
     fn parent<'b>(&'b self) -> Option<&'b Self::NodeRef>;
+    fn parent_mut<'b>(&'b mut self) -> Option<&'b mut Self::NodeRef>;
 
     fn children<'b>(&'b self) -> Option<Ref<'b, Vec<Self::NodeRef>>>;
 
@@ -40,7 +41,11 @@ pub trait Node: Sized {
         self.children().map(|v| v.len()).unwrap_or(0)
     }
 
+    /// Add a new child node to this node
     fn add_child(&mut self, node: Self::NodeRef);
+
+    /// Delete a child node from this node at the specified index
+    fn remove_child_index(&mut self, index: usize);
 }
 
 /// TreeNodeSimple provides no interior mutability
@@ -104,8 +109,18 @@ where
         }
     }
 
+    fn remove_child_index(&mut self, index: usize) {
+        if let Some(children) = &mut self.children {
+            let _removed = children.remove(index);
+        }
+    }
+
     fn parent<'b>(&'b self) -> Option<&'b Self::NodeRef> {
         (&*self.parent).as_ref()
+    }
+
+    fn parent_mut<'b>(&'b mut self) -> Option<&'b mut Self::NodeRef> {
+        (&mut *self.parent).as_mut()
     }
 }
 
@@ -193,8 +208,18 @@ where
         }
     }
 
+    fn remove_child_index(&mut self, index: usize) {
+        if let Some(children) = &*self.children {
+            let _removed = children.borrow_mut().remove(index);
+        }
+    }
+
     fn parent<'b>(&'b self) -> Option<&'b Self::NodeRef> {
         self.parent.as_ref()
+    }
+
+    fn parent_mut<'b>(&'b mut self) -> Option<&'b mut Self::NodeRef> {
+        self.parent.as_mut()
     }
 }
 

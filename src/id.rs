@@ -1,6 +1,8 @@
 use std::sync::atomic::AtomicU64;
 
-pub trait UniqueId: Clone + Ord + PartialEq + std::fmt::Debug + std::fmt::Display {
+pub trait UniqueId:
+    Clone + Ord + PartialEq + std::fmt::Debug + std::fmt::Display + std::hash::Hash
+{
     type Output;
 }
 
@@ -32,7 +34,7 @@ impl UniqueGenerator for AtomicU64Generator {
 #[derive(Default, Debug)]
 pub struct UuidGenerator;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub struct Uuid(uuid::Uuid);
 
 impl UniqueId for Uuid {
