@@ -213,7 +213,6 @@ where
 
 #[cfg(test)]
 mod tests {
-    use tracing::info;
     use tracing_test::traced_test;
 
     use super::*;
@@ -242,7 +241,7 @@ mod tests {
             }
         }
 
-        let tree = TreeBuilder::<TestData, MyError>::new()
+        let _tree = TreeBuilder::<TestData, MyError>::new()
             .root(TestData::Foo, |foo| {
                 foo.child(TestData::Bar, |bar| bar.child(TestData::Baz, |_| Ok(())))?;
 

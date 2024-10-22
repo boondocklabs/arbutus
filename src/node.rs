@@ -290,13 +290,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use tracing::info;
     use tracing_test::traced_test;
 
-    use crate::{
-        index::{BTreeIndex, TreeIndex},
-        NodeId, NodeRefRc, Tree, TreeBuilder,
-    };
+    use crate::{index::BTreeIndex, NodeId, NodeRefRc, Tree, TreeBuilder};
 
     use super::TreeNodeRefCell;
 
@@ -349,14 +345,6 @@ mod tests {
                 Ok(())
             })?
             .done()
-    }
-
-    type R = NodeRefRc<TreeNodeRefCell<TestData, NodeId>>;
-
-    #[derive(Debug)]
-    struct App {
-        _tree: Tree<R>,
-        _index: BTreeIndex<R>,
     }
 
     #[traced_test]
