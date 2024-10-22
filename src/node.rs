@@ -292,7 +292,7 @@ where
 mod tests {
     use tracing_test::traced_test;
 
-    use crate::{index::BTreeIndex, NodeId, NodeRefRc, Tree, TreeBuilder};
+    use crate::{NodeId, NodeRefRc, Tree, TreeBuilder};
 
     use super::TreeNodeRefCell;
 
