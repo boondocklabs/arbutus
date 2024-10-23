@@ -11,6 +11,7 @@
 mod builder;
 mod compare;
 mod display;
+mod hash;
 mod id;
 mod index;
 mod iterator;
@@ -19,6 +20,7 @@ mod noderef;
 mod tree;
 
 pub use builder::*;
+pub use hash::{NodeHash, TreeHashIndex};
 pub use id::*;
 pub use node::{Node, TreeNodeRefCell, TreeNodeSimple};
 pub use noderef::{NodeRef, NodeRefRc, NodeRefRef};

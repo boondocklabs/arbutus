@@ -5,14 +5,15 @@ use std::{
     rc::Rc,
 };
 
+/// Type alias to get associated type of Id from the Inner node of a NodeRef
+pub type NodeRefId<R> = <<R as NodeRef>::Inner as Node>::Id;
+
 use crate::{display::TreeDisplay, iterator::IterNode, node::Node};
 
 pub trait NodeRef: Clone + IntoIterator<Item = IterNode<Self>> {
     // The inner type of this NodeRef is a Node trait, that
     // has a NodeRef type of ourselves
     type Inner: Node<NodeRef = Self>;
-    //where
-    //for<'b> <<Self as NodeRef>::Inner as Node>::DataRef<'b>: std::fmt::Display;
 
     // InnerRef must impl Deref, with a Target of our Inner Node
     type InnerRef<'b>: Deref<Target = Self::Inner>
@@ -210,10 +211,12 @@ where
 
 impl<T> std::fmt::Debug for NodeRefRc<T>
 where
-    T: Node<NodeRef = Self> + 'static,
+    T: Node<NodeRef = Self> + std::fmt::Debug + 'static,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.tree_format(f)
+        f.debug_struct("NodeRef")
+            .field("node", &self.node())
+            .finish()
     }
 }
 

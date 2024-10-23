@@ -1,6 +1,6 @@
 use std::hash::{Hash as _, Hasher};
 
-use crate::{IndexedTree, NodeRef, Tree};
+use crate::{IndexedTree, Node, NodeRef, Tree};
 use xxhash_rust::xxh64::Xxh64;
 
 /// Tree Comparison
@@ -14,10 +14,12 @@ where
         let mut hasher_other = Xxh64::new(0);
 
         for node in self.root().into_iter() {
+            node.node().hash_children(&mut hasher_self);
             node.node().hash(&mut hasher_self);
         }
 
         for node in other.root().into_iter() {
+            node.node().hash_children(&mut hasher_other);
             node.node().hash(&mut hasher_other);
         }
 

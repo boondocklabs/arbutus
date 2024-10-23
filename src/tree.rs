@@ -26,8 +26,12 @@ where
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Tree")
-            .field("hash", &format_args!("0x{:X}", self.xxhash()))
+            .field(
+                "positional_hash",
+                &format_args!("0x{:X}", self.xxhash_positional()),
+            )
             .field("depth", &self.depth())
+            .field("width", &self.width())
             .finish()
     }
 }
@@ -53,11 +57,17 @@ where
         self.root().into_iter().map(|f| f.depth()).max().unwrap()
     }
 
-    /// Get the xxh64 hash of the tree. This includes all children
-    pub fn xxhash(&self) -> u64 {
+    /// Get the maximum width of the tree (iterator index())
+    pub fn width(&self) -> usize {
+        self.root().into_iter().map(|f| f.index()).max().unwrap()
+    }
+
+    /// Get the positional xxh64 hash of the tree. This includes the index, depth, and data of each node
+    pub fn xxhash_positional(&self) -> u64 {
         let mut hasher = Xxh64::new(0);
         for node in self.root() {
-            // Include the node depth in the hash
+            // Include the node index and depth in the hash
+            node.index().hash(&mut hasher);
             node.depth().hash(&mut hasher);
             node.node().hash(&mut hasher);
         }

@@ -1,10 +1,13 @@
 use std::{
     cell::{Ref, RefCell, RefMut},
+    fmt::Debug,
+    hash::Hasher,
     ops::{Deref, DerefMut},
     rc::Rc,
 };
 
 use tracing::debug;
+use xxhash_rust::xxh64::Xxh64;
 
 use crate::{
     id::UniqueId,
@@ -60,6 +63,63 @@ pub trait Node: Sized + std::hash::Hash {
             );
             None
         }
+    }
+
+    fn hash_children(&self, state: &mut impl std::hash::Hasher) {
+        if let Some(children) = self.children() {
+            for child in children.iter() {
+                child.node().hash(state);
+            }
+        }
+    }
+
+    fn xxhash(&self) -> u64 {
+        let mut hasher = Xxh64::new(0);
+        self.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    /// Hash the node including immediate children
+    fn xxhash_children(&self) -> u64 {
+        let mut hasher = Xxh64::new(0);
+
+        self.hash_children(&mut hasher);
+
+        // Hash ourselves
+        self.hash(&mut hasher);
+
+        hasher.finish()
+    }
+
+    /// Hash the node including immediate children. Additional data to hash can provided in the `with` argument
+    fn xxhash_children_with(&self, with: &[&impl std::hash::Hash]) -> u64 {
+        let mut hasher = Xxh64::new(0);
+
+        // Hash additional context
+        for h in with {
+            h.hash(&mut hasher);
+        }
+
+        if let Some(children) = self.children() {
+            for child in children.iter() {
+                child.node().hash(&mut hasher);
+            }
+        }
+
+        // Hash ourselves
+        self.hash(&mut hasher);
+
+        hasher.finish()
+    }
+
+    /// Compute the node hash with additional context
+    fn xxhash_with(&self, with: &[&impl std::hash::Hash]) -> u64 {
+        let mut hasher = Xxh64::new(0);
+        for h in with {
+            h.hash(&mut hasher);
+        }
+        self.hash(&mut hasher);
+        hasher.finish()
     }
 
     /// Delete a child node from this node at the specified index
@@ -157,7 +217,6 @@ where
 }
 
 /// TreeNodeRefCell wraps each node in Rc and RefCell providing interior mutability
-#[derive(Debug)]
 pub struct TreeNodeRefCell<Data, Id = crate::NodeId>
 where
     Id: UniqueId + 'static,
@@ -167,6 +226,34 @@ where
     data: Rc<RefCell<Data>>,
     parent: Option<NodeRefRc<Self>>,
     children: Rc<Option<RefCell<Vec<NodeRefRc<Self>>>>>,
+}
+
+impl<Data, Id> std::fmt::Debug for TreeNodeRefCell<Data, Id>
+where
+    Id: UniqueId + 'static,
+    Data: std::hash::Hash + std::fmt::Debug + std::fmt::Display + 'static,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TreeNodeRefCell")
+            .field("id", &self.id)
+            .field("hash", &format_args!("0x{:X}", self.xxhash()))
+            .field("data", &format_args!("{}", self.data()))
+            .field(
+                "parent_id",
+                &format_args!("{:?}", self.parent.as_ref().map(|p| p.node().id())),
+            )
+            .field(
+                "child_ids",
+                &format_args!(
+                    "{:?}",
+                    self.children().map(|children| children
+                        .iter()
+                        .map(|c| c.node().id())
+                        .collect::<Vec<Id>>())
+                ),
+            )
+            .finish()
+    }
 }
 
 impl<Data, Id> std::hash::Hash for TreeNodeRefCell<Data, Id>
