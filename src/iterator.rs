@@ -5,12 +5,20 @@ use crate::node::Node;
 use crate::noderef::{NodeRef, NodeRefRef};
 use crate::NodeRefRc;
 
+#[derive(Debug, Hash, Clone, Copy, PartialEq, Eq)]
+pub struct NodePosition {
+    // Vertical depth
+    depth: usize,
+
+    // Horizontal index at each depth.
+    index: usize,
+}
+
 pub struct IterNode<R>
 where
     R: NodeRef,
 {
-    index: usize,
-    depth: usize,
+    position: NodePosition,
     node: R,
 }
 
@@ -20,12 +28,16 @@ where
 {
     /// The index along the horizontal at the current depth
     pub fn index(&self) -> usize {
-        self.index
+        self.position.index
     }
 
     /// The vertical depth of this node
     pub fn depth(&self) -> usize {
-        self.depth
+        self.position.depth
+    }
+
+    pub fn position(&self) -> &NodePosition {
+        &self.position
     }
 }
 
@@ -104,7 +116,10 @@ where
                 })
             });
 
-            IterNode { index, depth, node }
+            IterNode {
+                position: NodePosition { depth, index },
+                node,
+            }
         })
     }
 }

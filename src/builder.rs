@@ -160,12 +160,12 @@ where
     }
 
     /// Returns the constructed tree when finished building it.
-    pub fn done(self) -> Result<Option<Tree<R>>, E> {
+    pub fn done(self) -> Result<Option<Tree<R, G>>, E> {
         self.debug_span.in_scope(|| {
             debug!("Finished build tree");
 
             if let Some(root) = self.root {
-                Ok(Some(Tree::from_node(root)))
+                Ok(Some(Tree::from_node(root, Some(self.idgen))))
             } else {
                 Ok(None)
             }

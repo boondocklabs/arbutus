@@ -14,7 +14,7 @@ pub trait UniqueGenerator: Default + std::fmt::Debug + 'static {
     type Output: UniqueId;
 
     /// Generate a unique value
-    fn generate(&mut self) -> Self::Output;
+    fn generate(&self) -> Self::Output;
 }
 
 #[derive(Default, Debug)]
@@ -25,7 +25,7 @@ pub struct AtomicU64Generator {
 impl UniqueGenerator for AtomicU64Generator {
     type Output = u64;
 
-    fn generate(&mut self) -> u64 {
+    fn generate(&self) -> u64 {
         self.next_id
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     }
@@ -70,7 +70,7 @@ impl Eq for Uuid {}
 impl UniqueGenerator for UuidGenerator {
     type Output = Uuid;
 
-    fn generate(&mut self) -> Uuid {
+    fn generate(&self) -> Uuid {
         Uuid(uuid::Uuid::new_v4())
     }
 }

@@ -11,13 +11,19 @@ use crate::{
     index::{BTreeIndex, TreeIndex},
     node::Node,
     noderef::NodeRef,
+    UniqueGenerator,
 };
 
-pub struct Tree<R>
+pub struct Tree<R, G = crate::IdGenerator>
 where
     R: NodeRef + 'static,
+    G: UniqueGenerator + 'static,
 {
+    // Root node of this tree
     root: Option<R>,
+
+    // Unique ID Generator
+    idgen: Option<G>,
 }
 
 impl<R> std::fmt::Debug for Tree<R>
@@ -36,16 +42,28 @@ where
     }
 }
 
-impl<R> Tree<R>
+impl<R, G> Tree<R, G>
 where
     R: NodeRef + 'static,
+    G: UniqueGenerator + 'static,
 {
     pub fn new() -> Self {
-        Self { root: None }
+        Self {
+            root: None,
+            idgen: None,
+        }
+    }
+
+    /// Allocate a new node ID
+    pub fn generate_id(&self) -> G::Output {
+        self.idgen
+            .as_ref()
+            .expect("ID Generator is not defined")
+            .generate()
     }
 
     /// Convert this tree into an [`IndexedTree`]
-    pub fn index(self) -> IndexedTree<R> {
+    pub fn index(self) -> IndexedTree<R, G> {
         IndexedTree::from_tree(self)
     }
 
@@ -75,8 +93,11 @@ where
     }
 
     /// Create a [`Tree`] container from a root [`NodeRef`]
-    pub fn from_node(root: R) -> Self {
-        Self { root: Some(root) }
+    pub fn from_node(root: R, idgen: Option<G>) -> Self {
+        Self {
+            root: Some(root),
+            idgen,
+        }
     }
 
     /// Get the root [`NodeRef`] of the tree
@@ -130,9 +151,10 @@ where
     }
 }
 
-impl<R> Deref for Tree<R>
+impl<R, G> Deref for Tree<R, G>
 where
     R: NodeRef + 'static,
+    G: UniqueGenerator + 'static,
 {
     type Target = R;
 
@@ -141,11 +163,12 @@ where
     }
 }
 
-pub struct IndexedTree<R>
+pub struct IndexedTree<R, G = crate::IdGenerator>
 where
     R: NodeRef + 'static,
+    G: UniqueGenerator + 'static,
 {
-    tree: Tree<R>,
+    tree: Tree<R, G>,
     leaves: Vec<R>,
     index: BTreeIndex<R>,
 }
@@ -167,9 +190,10 @@ where
     }
 }
 
-impl<R> IndexedTree<R>
+impl<R, G> IndexedTree<R, G>
 where
     R: NodeRef + 'static,
+    G: UniqueGenerator + 'static,
 {
     // Create a new empty indexed tree
     pub fn new() -> Self {
@@ -180,7 +204,7 @@ where
         }
     }
 
-    pub fn from_tree(tree: Tree<R>) -> Self {
+    pub fn from_tree(tree: Tree<R, G>) -> Self {
         let index = BTreeIndex::from_tree(&tree);
 
         let mut leaves = Vec::new();
@@ -199,7 +223,7 @@ where
         }
     }
 
-    pub fn tree(&self) -> &Tree<R> {
+    pub fn tree(&self) -> &Tree<R, G> {
         &self.tree
     }
 
@@ -280,11 +304,12 @@ where
 }
 
 /// Deref IndexedTree into Tree
-impl<R> Deref for IndexedTree<R>
+impl<R, G> Deref for IndexedTree<R, G>
 where
     R: NodeRef + 'static,
+    G: UniqueGenerator + 'static,
 {
-    type Target = Tree<R>;
+    type Target = Tree<R, G>;
 
     fn deref(&self) -> &Self::Target {
         &self.tree

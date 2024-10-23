@@ -1,13 +1,13 @@
 use std::collections::BTreeMap;
 
-use crate::{node::Node, noderef::NodeRef, Tree};
+use crate::{node::Node, noderef::NodeRef, Tree, UniqueGenerator};
 
 pub trait TreeIndex<R>
 where
     R: NodeRef,
 {
     fn new() -> Self;
-    fn from_tree(root: &Tree<R>) -> Self;
+    fn from_tree<G: UniqueGenerator>(root: &Tree<R, G>) -> Self;
     fn from_node(node: &R) -> Self;
     fn insert(&mut self, id: <<R as NodeRef>::Inner as Node>::Id, node: R);
     fn get(&self, id: &<<R as NodeRef>::Inner as Node>::Id) -> Option<&R>;
@@ -34,7 +34,7 @@ where
         }
     }
 
-    fn from_tree(tree: &Tree<R>) -> Self {
+    fn from_tree<G: UniqueGenerator>(tree: &Tree<R, G>) -> Self {
         Self::from_node(&tree.root())
     }
 

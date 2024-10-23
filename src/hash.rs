@@ -1,22 +1,20 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::{noderef::NodeRefId, IndexedTree, Node, NodeRef};
+use crate::{iterator::NodePosition, noderef::NodeRefId, IndexedTree, Node, NodeRef};
 
 /// NodeHash represents a hash value for a [`Node`] in a [`Tree`]
 #[derive(Hash, PartialEq, Eq, Clone)]
 pub enum NodeHash {
     // Hash value depends on the position of the node in the tree
     Positional {
-        // How deep the hash traversed from this node
-        depth: usize,
+        // Position of the node
+        position: NodePosition,
         // The hash value of this node
         hash: u64,
     },
 
     // Hash value indepdenent of the position in the tree
     Independent {
-        // Traversal depth from this node
-        depth: usize,
         // The hash value
         hash: u64,
     },
@@ -25,14 +23,13 @@ pub enum NodeHash {
 impl std::fmt::Debug for NodeHash {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            NodeHash::Positional { depth, hash } => f
+            NodeHash::Positional { position, hash } => f
                 .debug_struct("NodeHash::Positional")
-                .field("depth", &depth)
+                .field("position", &position)
                 .field("hash", &format_args!("0x{:X}", hash))
                 .finish(),
-            NodeHash::Independent { depth, hash } => f
+            NodeHash::Independent { hash } => f
                 .debug_struct("NodeHash::Indepdenent")
-                .field("depth", &depth)
                 .field("hash", &format_args!("0x{:X}", hash))
                 .finish(),
         }
@@ -64,26 +61,60 @@ impl<R: NodeRef> TreeHashIndex<R> {
     }
 
     pub fn from_tree(tree: &IndexedTree<R>) -> Self {
+        let mut inverted: HashMap<NodeHash, NodeRefId<R>> = HashMap::new();
+        let mut forward: HashMap<NodeRefId<R>, NodeHash> = HashMap::new();
+        let mut unique: HashSet<NodeHash> = HashSet::new();
+
+        for node in tree.root() {
+            let node_id = node.node().id();
+            let position = node.position();
+
+            // Get a hash of the node
+            let node_hash = node.node().xxhash();
+
+            // Wrap the hash in a NodeHash::Positional, to make this hash value
+            // positional depdentent. The hash of the NodeHash with the same hash field
+            // will subsequently hash to a different value than the same node contents
+            // at a different position in the tree.
+            let nodehash = NodeHash::Positional {
+                position: *position,
+                hash: node_hash,
+            };
+
+            // Insert into indexes
+            inverted.insert(nodehash.clone(), node_id.clone());
+            forward.insert(node_id.clone(), nodehash.clone());
+            unique.insert(nodehash.clone());
+        }
+
+        /*
         let inverted: HashMap<NodeHash, NodeRefId<R>> = tree
             .root()
             .into_iter()
             .map(|node| {
-                let h = node
-                    .node()
-                    .xxhash_children_with(&[&node.depth(), &node.index()]);
+                let h = node.node().xxhash_with(&[&node.depth(), &node.index()]);
+                //.xxhash_children_with(&[&node.depth(), &node.index()]);
 
-                let nodehash = NodeHash::Positional { depth: 1, hash: h };
+                let nodehash = NodeHash::Positional {
+                    position: *node.position(),
+                    hash: h,
+                };
                 (nodehash, node.node().id())
             })
             .collect();
+        */
 
+        /*
         let forward: HashMap<NodeRefId<R>, NodeHash> = inverted
             .iter()
             .map(|(hash, id)| (id.clone(), hash.clone()))
             .collect();
+        */
 
+        /*
         let unique: HashSet<NodeHash> =
             inverted.keys().map(|node_hash| node_hash.clone()).collect();
+        */
 
         Self {
             inverted,
