@@ -1,22 +1,41 @@
 use std::collections::HashMap;
 use std::{collections::VecDeque, ops::Deref};
 
-use crate::node::Node;
-use crate::noderef::{NodeRef, NodeRefRef};
-use crate::NodeRefRc;
+use crate::node::TreeNode;
+use crate::TreeNodeRef;
 
 #[derive(Debug, Hash, Clone, Copy, PartialEq, Eq)]
 pub struct NodePosition {
     // Vertical depth
-    depth: usize,
+    pub depth: usize,
 
     // Horizontal index at each depth.
-    index: usize,
+    pub index: usize,
+
+    // Index of the child relative to the parent
+    pub child_index: usize,
+}
+
+impl NodePosition {
+    /// Get the depth of this node
+    pub fn depth(&self) -> usize {
+        self.depth
+    }
+
+    /// Get the horizontal position of this node relative to all siblings at this depth
+    pub fn index(&self) -> usize {
+        self.index
+    }
+
+    /// Get the child position relative to the parent
+    pub fn child_index(&self) -> usize {
+        self.child_index
+    }
 }
 
 pub struct IterNode<R>
 where
-    R: NodeRef,
+    R: TreeNodeRef,
 {
     position: NodePosition,
     node: R,
@@ -24,7 +43,7 @@ where
 
 impl<R> IterNode<R>
 where
-    R: NodeRef,
+    R: TreeNodeRef,
 {
     /// The index along the horizontal at the current depth
     pub fn index(&self) -> usize {
@@ -43,7 +62,7 @@ where
 
 impl<R> Deref for IterNode<R>
 where
-    R: NodeRef,
+    R: TreeNodeRef,
 {
     type Target = R;
 
@@ -52,47 +71,21 @@ where
     }
 }
 
-impl<N> IntoIterator for NodeRefRc<N>
-where
-    N: Node<NodeRef = Self> + 'static,
-{
-    type Item = IterNode<Self>;
-    type IntoIter = NodeRefIter<Self>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        // Create an iterator starting with the root node in the stack
-        NodeRefIter::new(self)
-    }
-}
-
-impl<N> IntoIterator for NodeRefRef<N>
-where
-    N: Node<NodeRef = Self> + 'static,
-{
-    type Item = IterNode<Self>;
-    type IntoIter = NodeRefIter<Self>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        // Create an iterator starting with the root node in the stack
-        NodeRefIter::new(self)
-    }
-}
-
 pub struct NodeRefIter<R>
 where
-    R: NodeRef,
+    R: TreeNodeRef,
 {
-    stack: VecDeque<(usize, usize, R)>,
+    stack: VecDeque<(usize, usize, usize, R)>,
     index: HashMap<usize, usize>,
 }
 
 impl<R> NodeRefIter<R>
 where
-    R: NodeRef,
+    R: TreeNodeRef,
 {
     pub fn new(node: R) -> Self {
         Self {
-            stack: VecDeque::from([(0, 0, node)]),
+            stack: VecDeque::from([(0, 0, 0, node)]),
             index: HashMap::new(),
         }
     }
@@ -100,24 +93,50 @@ where
 
 impl<R> Iterator for NodeRefIter<R>
 where
-    R: NodeRef,
+    R: TreeNodeRef,
 {
     type Item = IterNode<R>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let current = self.stack.pop_front();
 
-        current.map(|(index, depth, node)| {
+        current.map(|(child_index, index, depth, node)| {
             node.node().children().map(|children| {
-                children.iter().rev().for_each(|child| {
-                    let index = self.index.entry(depth + 1).or_insert(0);
-                    *index = *index + 1;
-                    self.stack.push_front((*index, depth + 1, (*child).clone()))
-                })
+                let index = self.index.entry(depth).or_insert(0);
+
+                // Increment the horizontal index in the iterator state by the number of children we have.
+                // This increases the index by how many children we're about to push onto the stack,
+                // and will be retained as the iterator moves between different depths
+                *index += children.len();
+
+                children
+                    .iter()
+                    // Enumerate to get the child index
+                    .enumerate()
+                    // Reverse the iterator as we're pushing onto a stack
+                    // that will pop the nodes back off in reverse order
+                    .rev()
+                    .for_each(|(child_index, child)| {
+                        self.stack.push_front((
+                            child_index,
+                            // *index is positive offset by the number of children we're adding to the VecDeque,
+                            // so we need to decrement the next index by 1 as we're iterating backwards
+                            // The child index is also decreasing, so we can subtract the difference from the
+                            // total nodes to get an index offset
+                            *index - (children.len() - child_index),
+                            // Each child being pushed will have it's depth set to the current node depth + 1
+                            depth + 1,
+                            (*child).clone(),
+                        ));
+                    })
             });
 
             IterNode {
-                position: NodePosition { depth, index },
+                position: NodePosition {
+                    depth,
+                    index,
+                    child_index,
+                },
                 node,
             }
         })

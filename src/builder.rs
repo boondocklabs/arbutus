@@ -9,12 +9,12 @@ use tracing::{debug, debug_span};
 
 use crate::{
     id::UniqueGenerator,
-    node::{Node, TreeNodeRefCell},
-    NodeRef, NodeRefRc, Tree,
+    node::{refcell, TreeNode},
+    Tree, TreeNodeRef,
 };
 
-type DefaultNodeRef<T> = NodeRefRc<T>;
-type DefaultNode<Data, IdGen> = TreeNodeRefCell<Data, <IdGen as UniqueGenerator>::Output>;
+type DefaultNodeRef<T> = crate::noderef::rc::NodeRef<T>;
+type DefaultNode<Data, IdGen> = refcell::Node<Data, <IdGen as UniqueGenerator>::Output>;
 
 /// A builder for constructing children from a parent node.
 ///
@@ -32,8 +32,8 @@ pub struct NodeBuilder<
 > where
     G: UniqueGenerator,
     D: std::fmt::Display + 'static,
-    N: Node<Id = G::Output, NodeRef = R>,
-    R: NodeRef<Inner = N>,
+    N: TreeNode<Id = G::Output, NodeRef = R>,
+    R: TreeNodeRef<Inner = N>,
 {
     node_ref: &'a mut R,
     idgen: &'a mut G,
@@ -49,8 +49,8 @@ impl<'a, D, E, G, N, R> NodeBuilder<'a, D, E, G, N, R>
 where
     D: std::fmt::Display,
     G: UniqueGenerator,
-    N: Node<Id = G::Output, NodeRef = R>,
-    R: NodeRef<Inner = N>,
+    N: TreeNode<Id = G::Output, NodeRef = R>,
+    R: TreeNodeRef<Inner = N>,
 {
     /// Creates a new `NodeBuilder` instance.
     ///
@@ -118,7 +118,7 @@ where
 /// type MyData = String;
 /// type MyError = String;
 ///
-/// use arbutus::{TreeBuilder, TreeNodeRefCell};
+/// use arbutus::{TreeBuilder, node::refcell::Node};
 /// let mut builder = TreeBuilder::<MyData, MyError>::new();
 /// let root_builder = builder.root("Root".to_string(), |root| { /* add children */ Ok(()) });
 ///
@@ -129,6 +129,8 @@ where
 pub struct TreeBuilder<D, E, G = crate::IdGenerator, N = DefaultNode<D, G>, R = DefaultNodeRef<N>>
 where
     G: UniqueGenerator,
+    N: TreeNode<Id = G::Output, NodeRef = R>,
+    R: TreeNodeRef<Inner = N>,
 {
     idgen: G,
     root: Option<R>,
@@ -140,8 +142,8 @@ impl<D, E, G, N, R> TreeBuilder<D, E, G, N, R>
 where
     D: std::fmt::Display,
     G: UniqueGenerator,
-    N: Node,
-    R: NodeRef,
+    N: TreeNode<Id = G::Output, NodeRef = R>,
+    R: TreeNodeRef<Inner = N>,
 {
     /// Creates a new `TreeBuilder` instance.
     pub fn new() -> Self {
@@ -182,14 +184,14 @@ where
     where
         D: std::fmt::Debug + 'static,
         F: FnOnce(&mut NodeBuilder<'_, D, E, G, N, R>) -> Result<(), E>,
-        N: Node<NodeRef = R, Id = G::Output>,
-        R: NodeRef<Inner = N> + std::fmt::Debug,
+        N: TreeNode<NodeRef = R, Id = G::Output>,
+        R: TreeNodeRef<Inner = N> + std::fmt::Debug,
     {
         let id = self.idgen.generate();
 
         self.debug_span.in_scope(|| {
-            let node = Node::new(id, data, None);
-            let mut node_ref = NodeRef::new(node);
+            let node = TreeNode::new(id, data, None);
+            let mut node_ref = TreeNodeRef::new(node);
 
             let mut node_builder =
                 NodeBuilder::<D, E, G, N, R>::new(&mut node_ref, &mut self.idgen);
@@ -226,7 +228,7 @@ mod tests {
             Fail(String),
         }
 
-        #[derive(Debug, Hash)]
+        #[derive(Debug, Clone, Hash)]
         #[allow(unused)]
         enum TestData {
             Foo,

@@ -1,6 +1,11 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    hash::{DefaultHasher, Hash as _, Hasher as _},
+};
 
-use crate::{iterator::NodePosition, noderef::NodeRefId, IndexedTree, Node, NodeRef};
+use crate::{
+    iterator::NodePosition, noderef::NodeRefId, IndexedTree, TreeNode, TreeNodeRef, UniqueGenerator,
+};
 
 /// NodeHash represents a hash value for a [`Node`] in a [`Tree`]
 #[derive(Hash, PartialEq, Eq, Clone)]
@@ -20,6 +25,15 @@ pub enum NodeHash {
     },
 }
 
+impl NodeHash {
+    /// Get the DefaultHasher hash value for this NodeHash
+    pub fn get_hash(&self) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        self.hash(&mut hasher);
+        hasher.finish()
+    }
+}
+
 impl std::fmt::Debug for NodeHash {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -37,37 +51,42 @@ impl std::fmt::Debug for NodeHash {
 }
 
 #[derive(Debug)]
-pub struct TreeHashIndex<R: NodeRef> {
+pub struct TreeHashIndex<R: TreeNodeRef> {
     forward: HashMap<NodeRefId<R>, NodeHash>,
     inverted: HashMap<NodeHash, NodeRefId<R>>,
 
     // Unique hashes in this tree
     unique: HashSet<NodeHash>,
+
+    // Node position index
+    position: HashMap<NodePosition, NodeRefId<R>>,
 }
 
-impl<R: NodeRef> Default for TreeHashIndex<R> {
+impl<R: TreeNodeRef> Default for TreeHashIndex<R> {
     fn default() -> Self {
         Self {
             forward: HashMap::new(),
             inverted: HashMap::new(),
             unique: HashSet::new(),
+            position: HashMap::new(),
         }
     }
 }
 
-impl<R: NodeRef> TreeHashIndex<R> {
+impl<R: TreeNodeRef> TreeHashIndex<R> {
     pub fn new() -> Self {
         Self::default()
     }
 
-    pub fn from_tree(tree: &IndexedTree<R>) -> Self {
-        let mut inverted: HashMap<NodeHash, NodeRefId<R>> = HashMap::new();
-        let mut forward: HashMap<NodeRefId<R>, NodeHash> = HashMap::new();
-        let mut unique: HashSet<NodeHash> = HashSet::new();
+    pub fn from_tree<G>(tree: &IndexedTree<R, G>) -> Self
+    where
+        G: UniqueGenerator<Output = NodeRefId<R>> + 'static,
+    {
+        let mut index = Self::new();
 
         for node in tree.root() {
             let node_id = node.node().id();
-            let position = node.position();
+            let node_position = node.position();
 
             // Get a hash of the node
             let node_hash = node.node().xxhash();
@@ -77,14 +96,16 @@ impl<R: NodeRef> TreeHashIndex<R> {
             // will subsequently hash to a different value than the same node contents
             // at a different position in the tree.
             let nodehash = NodeHash::Positional {
-                position: *position,
+                position: *node_position,
                 hash: node_hash,
             };
 
             // Insert into indexes
-            inverted.insert(nodehash.clone(), node_id.clone());
-            forward.insert(node_id.clone(), nodehash.clone());
-            unique.insert(nodehash.clone());
+            index.inverted.insert(nodehash.clone(), node_id.clone());
+            index.forward.insert(node_id.clone(), nodehash.clone());
+            index.unique.insert(nodehash.clone());
+
+            index.position.insert(*node_position, node_id);
         }
 
         /*
@@ -116,11 +137,7 @@ impl<R: NodeRef> TreeHashIndex<R> {
             inverted.keys().map(|node_hash| node_hash.clone()).collect();
         */
 
-        Self {
-            inverted,
-            unique,
-            forward,
-        }
+        index
     }
 
     /// Get the NodeId for the provided [`NodeHash`]
@@ -128,12 +145,17 @@ impl<R: NodeRef> TreeHashIndex<R> {
         self.inverted.get(hash).map(|id| *id)
     }
 
+    /// Get the [`NodeId`] for the provided [`NodePosition`]
+    pub fn get_position_id(&self, position: &NodePosition) -> Option<NodeRefId<R>> {
+        self.position.get(position).map(|id| *id)
+    }
+
     /// Get the [`NodeHash`] for the provided [`NodeId`]
     pub fn get_hash(&self, id: &NodeRefId<R>) -> Option<NodeHash> {
         self.forward.get(id).map(|hash| hash.clone())
     }
 
-    /// Get unique set of hash values in the tree
+    /// Get a set of unique hash values in the tree
     pub fn unique(&self) -> &HashSet<NodeHash> {
         &self.unique
     }
@@ -145,8 +167,11 @@ impl<R: NodeRef> TreeHashIndex<R> {
     }
 
     /// Get NodeHashes from this tree which don't exist in some other tree
-    pub fn diff_hash<'b>(&'b self, other: &'b Self) -> HashSet<&'b NodeHash> {
-        self.unique.difference(other.unique()).collect()
+    pub fn diff_hash<'b>(&'b self, other: &'b Self) -> HashSet<NodeHash> {
+        self.unique
+            .difference(other.unique())
+            .map(|hash| hash.clone())
+            .collect()
     }
 
     /// Insert a node into the index
@@ -157,5 +182,133 @@ impl<R: NodeRef> TreeHashIndex<R> {
     /// Remove a hash from the index
     pub fn remove_hash(&mut self, hash: &NodeHash) -> Option<NodeRefId<R>> {
         self.inverted.remove(hash)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+
+    use tracing_test::traced_test;
+
+    use crate::{NodeHash, NodePosition};
+
+    #[traced_test]
+    #[test]
+    fn node_hash() {
+        let a = NodeHash::Positional {
+            position: NodePosition {
+                depth: 4,
+                index: 3,
+                child_index: 0,
+            },
+            hash: 0x863C27D43B7A0945,
+        };
+
+        let b = NodeHash::Positional {
+            position: NodePosition {
+                depth: 3,
+                index: 1,
+                child_index: 0,
+            },
+            hash: 0x7A107AE0F851BF94,
+        };
+
+        // Same node data hash (0x7A107...) but at a different location will hash to a different value
+        let c = NodeHash::Positional {
+            position: NodePosition {
+                depth: 2,
+                index: 1,
+                child_index: 0,
+            },
+            hash: 0x7A107AE0F851BF94,
+        };
+
+        let ha = a.get_hash();
+        let hb = b.get_hash();
+        let hc = c.get_hash();
+
+        assert_ne!(ha, hb);
+        assert_ne!(ha, hc);
+        assert_ne!(hb, ha);
+        assert_ne!(hb, hc);
+        assert_ne!(hc, ha);
+        assert_ne!(hc, hb);
+    }
+
+    #[traced_test]
+    #[test]
+    fn node_hash_same() {
+        let a = NodeHash::Positional {
+            position: NodePosition {
+                depth: 2,
+                index: 1,
+                child_index: 0,
+            },
+            hash: 0x7A107AE0F851BF94,
+        };
+        let b = NodeHash::Positional {
+            position: NodePosition {
+                depth: 2,
+                index: 1,
+                child_index: 0,
+            },
+            hash: 0x7A107AE0F851BF94,
+        };
+
+        // The same positional node hashes should produce the same hash value
+        assert_eq!(a.get_hash(), b.get_hash());
+    }
+
+    #[traced_test]
+    #[test]
+    fn node_hash_child_index() {
+        let a = NodeHash::Positional {
+            position: NodePosition {
+                depth: 2,
+                index: 1,
+                child_index: 0,
+            },
+            hash: 0x7A107AE0F851BF94,
+        };
+
+        let b = NodeHash::Positional {
+            position: NodePosition {
+                depth: 2,
+                index: 1,
+                child_index: 1,
+            },
+            hash: 0x7A107AE0F851BF94,
+        };
+
+        // Different child index should produce distinct hashes
+        assert_ne!(a.get_hash(), b.get_hash());
+    }
+
+    #[traced_test]
+    #[test]
+    fn node_hash_position() {
+        let mut check: HashSet<NodeHash> = HashSet::new();
+
+        let mut count = 0;
+        for depth in 0..100 {
+            for index in 0..100 {
+                for child_index in 0..10 {
+                    let a = NodeHash::Positional {
+                        position: NodePosition {
+                            depth,
+                            index,
+                            child_index,
+                        },
+                        hash: 0x7A107AE0F851BF94,
+                    };
+
+                    assert!(check.insert(a) == true);
+                    count += 1;
+                }
+            }
+        }
+
+        assert_eq!(count, check.len());
     }
 }

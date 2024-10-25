@@ -15,17 +15,20 @@ mod hash;
 mod id;
 mod index;
 mod iterator;
-mod node;
-mod noderef;
 mod tree;
+
+pub mod node;
+pub mod noderef;
 
 pub use builder::*;
 pub use hash::{NodeHash, TreeHashIndex};
 pub use id::*;
-pub use node::{Node, TreeNodeRefCell, TreeNodeSimple};
-pub use noderef::{NodeRef, NodeRefRc, NodeRefRef};
+pub use iterator::NodePosition;
 pub use tree::IndexedTree;
 pub use tree::Tree;
+
+pub use node::TreeNode;
+pub use noderef::TreeNodeRef;
 
 pub type IdGenerator = id::AtomicU64Generator;
 pub type NodeId = <IdGenerator as UniqueGenerator>::Output;

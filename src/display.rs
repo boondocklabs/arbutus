@@ -1,6 +1,6 @@
 use std::fmt::Write;
 
-use crate::{node::Node, noderef::NodeRef};
+use crate::{node::TreeNode, noderef::TreeNodeRef};
 
 pub struct TreeDisplay;
 
@@ -11,9 +11,9 @@ impl TreeDisplay {
         data_format: F,
     ) -> std::fmt::Result
     where
-        R: NodeRef,
+        R: TreeNodeRef,
         F: Fn(
-            <<R as NodeRef>::Inner as Node>::DataRef<'_>,
+            <<R as TreeNodeRef>::Inner as TreeNode>::DataRef<'_>,
             &mut std::fmt::Formatter<'_>,
         ) -> std::fmt::Result,
     {
@@ -67,6 +67,14 @@ impl TreeDisplay {
 
                 write!(f, " {}: ", node.node().id())?;
                 data_format(node.node().data(), f)?;
+
+                write!(
+                    f,
+                    " [depth:{} index:{} child_index:{}]",
+                    node.depth(),
+                    node.index(),
+                    node.position().child_index()
+                )?;
 
                 f.write_char('\n')?;
 

@@ -1,13 +1,14 @@
 use std::hash::{Hash as _, Hasher};
 
-use crate::{IndexedTree, Node, NodeRef, Tree};
+use crate::{noderef::NodeRefId, IndexedTree, Tree, TreeNode, TreeNodeRef, UniqueGenerator};
 use xxhash_rust::xxh64::Xxh64;
 
 /// Tree Comparison
 
-impl<R> PartialEq for Tree<R>
+impl<R, G> PartialEq for Tree<R, G>
 where
-    R: NodeRef + 'static,
+    R: TreeNodeRef + 'static,
+    G: UniqueGenerator<Output = NodeRefId<R>> + 'static,
 {
     fn eq(&self, other: &Self) -> bool {
         let mut hasher_self = Xxh64::new(0);
@@ -30,13 +31,19 @@ where
     }
 }
 
-impl<R> PartialEq for IndexedTree<R>
+impl<R, G> PartialEq for IndexedTree<R, G>
 where
-    R: NodeRef,
+    R: TreeNodeRef,
+    G: UniqueGenerator<Output = NodeRefId<R>> + 'static,
 {
     fn eq(&self, other: &Self) -> bool {
         self.tree() == other.tree()
     }
 }
 
-impl<R> Eq for IndexedTree<R> where R: NodeRef + std::hash::Hash + PartialEq + 'static {}
+impl<R, G> Eq for IndexedTree<R, G>
+where
+    R: TreeNodeRef + std::hash::Hash + PartialEq + 'static,
+    G: UniqueGenerator<Output = NodeRefId<R>> + 'static,
+{
+}
