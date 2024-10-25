@@ -30,5 +30,8 @@ pub use tree::Tree;
 pub use node::TreeNode;
 pub use noderef::TreeNodeRef;
 
+pub type NodeDepth = usize;
+pub type NodeIndex = usize;
+
 pub type IdGenerator = id::AtomicU64Generator;
 pub type NodeId = <IdGenerator as UniqueGenerator>::Output;

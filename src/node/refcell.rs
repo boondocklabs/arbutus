@@ -63,10 +63,6 @@ where
     Id: UniqueId + 'static,
     Data: std::hash::Hash + std::fmt::Display + Clone + 'static,
 {
-    fn test_internal(&mut self) {
-        println!("Internal called");
-    }
-
     fn set_id(&mut self, id: Id) {
         self.id = id;
     }
@@ -82,6 +78,8 @@ where
     type DataRef<'b> = Ref<'b, Self::Data>;
     type DataRefMut<'b> = RefMut<'b, Self::Data>;
     type NodeRef = NodeRef<Self>;
+    type ChildrenRef<'b> = Ref<'b, Vec<Self::NodeRef>>;
+    type ChildrenRefMut<'b> = RefMut<'b, Vec<Self::NodeRef>>;
 
     fn new(id: Self::Id, data: Self::Data, children: Option<Vec<Self::NodeRef>>) -> Self {
         let children = children
@@ -122,38 +120,11 @@ where
         }
     }
 
-    fn children_mut<'b>(&'b self) -> Option<RefMut<'b, Vec<Self::NodeRef>>> {
+    fn children_mut<'b>(&'b mut self) -> Option<RefMut<'b, Vec<Self::NodeRef>>> {
         if let Some(children) = &*self.children {
             Some(children.borrow_mut())
         } else {
             None
-        }
-    }
-
-    fn add_child(&mut self, node: NodeRef<Self>)
-    where
-        Id: 'static,
-        Data: 'static,
-    {
-        if self.children.is_none() {
-            debug!(
-                "Adding first child {} to node {}",
-                node.node().id(),
-                self.id()
-            );
-            self.children = Rc::new(Some(RefCell::new(vec![node])))
-        } else {
-            debug!("Adding child {} to node {}", node.node().id(), self.id());
-            let r = self.children.as_ref();
-            let r = r.as_ref().unwrap();
-            let mut r = r.borrow_mut();
-            r.push(node);
-        }
-    }
-
-    fn remove_child_index(&mut self, index: usize) {
-        if let Some(children) = &*self.children {
-            let _removed = children.borrow_mut().remove(index);
         }
     }
 

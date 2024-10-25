@@ -1,5 +1,4 @@
 use std::{
-    cell::{Ref, RefMut},
     hash::Hasher,
     ops::{Deref, DerefMut},
 };
@@ -8,6 +7,7 @@ use crate::{id::UniqueId, noderef::TreeNodeRef};
 use xxhash_rust::xxh64::Xxh64;
 
 pub mod refcell;
+pub mod simple;
 
 /// Sealed trait for internal Node methods
 pub(crate) mod internal {
@@ -19,7 +19,6 @@ pub(crate) mod internal {
         Data: std::hash::Hash + Clone + std::fmt::Display,
     {
         fn set_id(&mut self, id: Id);
-        fn test_internal(&mut self);
     }
 }
 
@@ -36,6 +35,14 @@ pub trait TreeNode:
         Self: 'b;
     type NodeRef: TreeNodeRef<Inner = Self>;
 
+    type ChildrenRef<'b>: Deref<Target = Vec<Self::NodeRef>>
+    where
+        Self: 'b;
+
+    type ChildrenRefMut<'b>: DerefMut<Target = Vec<Self::NodeRef>>
+    where
+        Self: 'b;
+
     fn new(id: Self::Id, data: Self::Data, children: Option<Vec<Self::NodeRef>>) -> Self;
 
     fn with_parent(self, parent: Self::NodeRef) -> Self;
@@ -48,8 +55,8 @@ pub trait TreeNode:
     fn parent<'b>(&'b self) -> Option<&'b Self::NodeRef>;
     fn parent_mut<'b>(&'b mut self) -> Option<&'b mut Self::NodeRef>;
 
-    fn children<'b>(&'b self) -> Option<Ref<'b, Vec<Self::NodeRef>>>;
-    fn children_mut<'b>(&'b self) -> Option<RefMut<'b, Vec<Self::NodeRef>>>;
+    fn children<'b>(&'b self) -> Option<Self::ChildrenRef<'b>>;
+    fn children_mut<'b>(&'b mut self) -> Option<Self::ChildrenRefMut<'b>>;
 
     fn set_children(&mut self, children: Option<Vec<Self::NodeRef>>);
 
@@ -59,7 +66,14 @@ pub trait TreeNode:
     }
 
     /// Add a new child node to this node
-    fn add_child(&mut self, node: Self::NodeRef);
+    fn push_child(&mut self, node: Self::NodeRef) {
+        if let Some(mut children) = self.children_mut() {
+            children.push(node);
+            return;
+        }
+
+        self.set_children(Some(Vec::from([node])));
+    }
 
     /// Insert a child node to this node at the specified index
     fn insert_child(&mut self, node: Self::NodeRef, index: usize) -> Option<()> {
@@ -80,6 +94,13 @@ pub trait TreeNode:
         // No existing children, create a new child vec for this node
         self.set_children(Some(Vec::from([node])));
         Some(())
+    }
+
+    /// Delete a child node from this node at the specified index
+    fn remove_child_index(&mut self, index: usize) {
+        if let Some(mut children) = self.children_mut() {
+            children.remove(index);
+        }
     }
 
     fn hash_children(&self, state: &mut impl std::hash::Hasher) {
@@ -138,9 +159,6 @@ pub trait TreeNode:
         self.hash(&mut hasher);
         hasher.finish()
     }
-
-    /// Delete a child node from this node at the specified index
-    fn remove_child_index(&mut self, index: usize);
 }
 
 #[cfg(test)]

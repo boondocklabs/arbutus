@@ -1,17 +1,26 @@
+use std::{collections::VecDeque, ops::Deref};
+
+use crate::{
+    iterator::{IterNode, NodeRefIter},
+    TreeNode,
+};
+
+use super::{internal::NodeRefInternal, TreeNodeRef};
+
 /// Simple reference noderef. Does not allow cloning.
 #[derive(Debug, Hash)]
-pub struct NodeRefRef<T>
+pub struct NodeRef<T>
 where
-    T: Node<NodeRef = Self> + 'static,
+    T: TreeNode<NodeRef = Self> + 'static,
 {
     node: T,
 }
 
-impl<T> NodeRefInternal<T> for NodeRefRef<T> where T: Node<NodeRef = Self> + 'static {}
+impl<T> NodeRefInternal<T> for NodeRef<T> where T: TreeNode<NodeRef = Self> + 'static {}
 
-impl<T> NodeRef for NodeRefRef<T>
+impl<T> TreeNodeRef for NodeRef<T>
 where
-    T: Node<NodeRef = Self> + 'static,
+    T: TreeNode<NodeRef = Self> + 'static,
 {
     type Inner = T;
     type InnerRef<'b> = &'b Self::Inner;
@@ -76,9 +85,9 @@ where
     }
 }
 
-impl<T> Deref for NodeRefRef<T>
+impl<T> Deref for NodeRef<T>
 where
-    T: Node<NodeRef = Self>,
+    T: TreeNode<NodeRef = Self>,
 {
     type Target = T;
 
@@ -87,18 +96,18 @@ where
     }
 }
 
-impl<T> Clone for NodeRefRef<T>
+impl<T> Clone for NodeRef<T>
 where
-    T: Node<NodeRef = Self>,
+    T: TreeNode<NodeRef = Self>,
 {
     fn clone(&self) -> Self {
         panic!("Cloning of node references is not supported with NodeRefRef nodes. Use one of the Rc/Arc smart pointer NodeRef types.");
     }
 }
 
-impl<N> IntoIterator for NodeRefRef<N>
+impl<N> IntoIterator for NodeRef<N>
 where
-    N: Node<NodeRef = Self> + 'static,
+    N: TreeNode<NodeRef = Self> + 'static,
 {
     type Item = IterNode<Self>;
     type IntoIter = NodeRefIter<Self>;

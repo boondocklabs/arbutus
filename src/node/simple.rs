@@ -1,31 +1,31 @@
+use crate::{noderef::simple::NodeRef, UniqueId};
+
+use super::{internal::NodeInternal, TreeNode};
+
 /// TreeNodeSimple provides no interior mutability
 #[derive(Debug, Clone)]
-pub struct TreeNodeSimple<Data, Id = crate::NodeId>
+pub struct Node<Data, Id = crate::NodeId>
 where
     Id: UniqueId + 'static,
     Data: std::hash::Hash + std::fmt::Display + Clone + 'static,
 {
     id: Id,
     data: Data,
-    parent: Box<Option<NodeRefRef<Self>>>,
-    children: Option<Vec<NodeRefRef<Self>>>,
+    parent: Box<Option<NodeRef<Self>>>,
+    children: Option<Vec<NodeRef<Self>>>,
 }
 
-impl<Data, Id> internal::NodeInternal<Data, Id> for TreeNodeSimple<Data, Id>
+impl<Data, Id> NodeInternal<Data, Id> for Node<Data, Id>
 where
     Id: UniqueId + 'static,
     Data: std::hash::Hash + std::fmt::Display + Clone + 'static,
 {
-    fn test_internal(&mut self) {
-        todo!()
-    }
-
     fn set_id(&mut self, id: Id) {
         self.id = id;
     }
 }
 
-impl<Data, Id> std::hash::Hash for TreeNodeSimple<Data, Id>
+impl<Data, Id> std::hash::Hash for Node<Data, Id>
 where
     Id: UniqueId + 'static,
     Data: std::hash::Hash + std::fmt::Display + Clone + 'static,
@@ -35,19 +35,20 @@ where
     }
 }
 
-impl<Data, Id> Node for TreeNodeSimple<Data, Id>
+impl<Data, Id> TreeNode for Node<Data, Id>
 where
     Id: UniqueId + 'static,
     Data: std::hash::Hash + std::fmt::Display + Clone + 'static,
 {
+    type NodeRef = NodeRef<Self>;
     type Data = Data;
     type Id = Id;
     type DataRef<'b> = &'b Data;
     type DataRefMut<'b> = &'b mut Data;
+    type ChildrenRef<'b> = &'b Vec<Self::NodeRef>;
+    type ChildrenRefMut<'b> = &'b mut Vec<Self::NodeRef>;
 
-    type NodeRef = NodeRefRef<Self>;
-
-    fn new(id: Self::Id, data: Self::Data, children: Option<Vec<NodeRefRef<Self>>>) -> Self {
+    fn new(id: Self::Id, data: Self::Data, children: Option<Vec<NodeRef<Self>>>) -> Self {
         Self {
             id,
             data,
@@ -66,25 +67,19 @@ where
     }
 
     fn data<'b>(&'b self) -> Self::DataRef<'b> {
-        todo!()
+        &self.data
     }
 
     fn data_mut<'b>(&'b mut self) -> Self::DataRefMut<'b> {
         &mut self.data
     }
 
-    fn children<'b>(&'b self) -> Option<Ref<'b, Vec<Self::NodeRef>>> {
-        todo!()
+    fn children<'b>(&'b self) -> Option<Self::ChildrenRef<'b>> {
+        self.children.as_ref()
     }
 
-    fn children_mut<'b>(&'b self) -> Option<RefMut<'b, Vec<Self::NodeRef>>> {
-        todo!()
-    }
-
-    fn add_child(&mut self, node: Self::NodeRef) {
-        if let Some(children) = &mut self.children {
-            children.push(node)
-        }
+    fn children_mut<'b>(&'b mut self) -> Option<Self::ChildrenRefMut<'b>> {
+        self.children.as_mut()
     }
 
     fn remove_child_index(&mut self, index: usize) {

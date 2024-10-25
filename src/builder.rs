@@ -10,7 +10,7 @@ use tracing::{debug, debug_span};
 use crate::{
     id::UniqueGenerator,
     node::{refcell, TreeNode},
-    Tree, TreeNodeRef,
+    NodeDepth, NodeIndex, Tree, TreeNodeRef,
 };
 
 type DefaultNodeRef<T> = crate::noderef::rc::NodeRef<T>;
@@ -35,8 +35,15 @@ pub struct NodeBuilder<
     N: TreeNode<Id = G::Output, NodeRef = R>,
     R: TreeNodeRef<Inner = N>,
 {
+    // NodeRef of this node
     node_ref: &'a mut R,
+    // UniqueGenerator handle
     idgen: &'a mut G,
+    // Tree depth of this node
+    depth: NodeDepth,
+    // Horizontal index of this node
+    index: NodeIndex,
+
     _phantom: (
         PhantomData<D>,
         PhantomData<E>,
@@ -58,10 +65,12 @@ where
     ///
     /// * `node`: The parent node to build children for.
     /// * `idgen`: The ID generator to use for child nodes.
-    pub fn new(node_ref: &'a mut R, idgen: &'a mut G) -> Self {
+    pub fn new(node_ref: &'a mut R, idgen: &'a mut G, depth: NodeDepth, index: NodeIndex) -> Self {
         Self {
             node_ref,
             idgen,
+            depth,
+            index,
             _phantom: (PhantomData, PhantomData, PhantomData, PhantomData),
         }
     }
@@ -76,21 +85,28 @@ where
     where
         F: FnOnce(&mut NodeBuilder<'_, D, E, G, N, R>) -> Result<(), E>,
     {
+        // Get the current number of children of this node to determine the node index
+        let child_index = self.node_ref.node().num_children();
+
         // Generate a new ID for this child
         let id = self.idgen.generate();
 
         // Create a new node for this child
         let node = N::new(id, data, None).with_parent(self.node_ref.clone());
         let mut child_node_ref = R::new(node);
-        let mut node_builder =
-            NodeBuilder::<D, E, G, N, R>::new(&mut child_node_ref, &mut self.idgen);
+        let mut node_builder = NodeBuilder::<D, E, G, N, R>::new(
+            &mut child_node_ref,
+            &mut self.idgen,
+            self.depth + 1,
+            self.index + child_index,
+        );
 
         // Call the supplied closure with the NodeBuilder to add this node's children
         f(&mut node_builder)?;
 
         // Create a new NodeRef for this child node
 
-        self.node_ref.node_mut().add_child(child_node_ref);
+        self.node_ref.node_mut().push_child(child_node_ref);
         Ok(())
     }
 
@@ -155,7 +171,6 @@ where
         Self {
             idgen: G::default(),
             root: None,
-            //current: None,
             debug_span,
             _phantom: (PhantomData, PhantomData, PhantomData),
         }
@@ -194,7 +209,7 @@ where
             let mut node_ref = TreeNodeRef::new(node);
 
             let mut node_builder =
-                NodeBuilder::<D, E, G, N, R>::new(&mut node_ref, &mut self.idgen);
+                NodeBuilder::<D, E, G, N, R>::new(&mut node_ref, &mut self.idgen, 0, 0);
 
             // Call the supplied closure with the NodeBuilder to add this node's children
             f(&mut node_builder)?;
@@ -243,15 +258,70 @@ mod tests {
             }
         }
 
-        let _tree = TreeBuilder::<TestData, MyError>::new()
+        let tree = TreeBuilder::<TestData, MyError>::new()
             .root(TestData::Foo, |foo| {
                 foo.child(TestData::Bar, |bar| bar.child(TestData::Baz, |_| Ok(())))?;
-
                 foo.child(TestData::String("Hello".into()), |_| Ok(()))?;
 
                 Ok(())
             })
             .unwrap()
-            .done();
+            .done()
+            .unwrap()
+            .unwrap();
+
+        println!("{}", tree.root());
+    }
+
+    #[test]
+    fn test_indices() {
+        #[derive(Debug)]
+        #[allow(unused)]
+        enum MyError {
+            Fail(String),
+        }
+
+        #[derive(Debug, Clone, Hash)]
+        #[allow(unused)]
+        enum TestData {
+            Foo,
+            Bar,
+            String(String),
+            Baz,
+        }
+
+        impl std::fmt::Display for TestData {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "{:?}", self)
+            }
+        }
+
+        let tree = TreeBuilder::<TestData, MyError>::new()
+            .root(TestData::Foo, |foo| {
+                assert_eq!(foo.depth, 0);
+                assert_eq!(foo.index, 0);
+                foo.child(TestData::Bar, |bar| {
+                    assert_eq!(bar.depth, 1);
+                    assert_eq!(bar.index, 0);
+                    bar.child(TestData::Baz, |baz| {
+                        assert_eq!(baz.depth, 2);
+                        assert_eq!(baz.index, 0);
+                        Ok(())
+                    })
+                })?;
+                foo.child(TestData::String("Hello".into()), |s| {
+                    assert_eq!(s.depth, 1);
+                    assert_eq!(s.index, 1);
+                    Ok(())
+                })?;
+
+                Ok(())
+            })
+            .unwrap()
+            .done()
+            .unwrap()
+            .unwrap();
+
+        println!("{}", tree.root());
     }
 }

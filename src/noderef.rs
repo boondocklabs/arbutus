@@ -1,6 +1,7 @@
 use std::ops::{Deref, DerefMut};
 
 pub mod rc;
+pub mod simple;
 
 /// Type alias to get associated type of Id from the Inner node of a NodeRef
 pub type NodeRefId<R> = <<R as TreeNodeRef>::Inner as TreeNode>::Id;
@@ -27,8 +28,8 @@ pub(crate) mod internal {
                 if let None = current {
                     break;
                 };
-                let node = current.map(|node| {
-                    node.node().children_mut().map(|mut children| {
+                let node = current.map(|mut node| {
+                    node.node_mut().children_mut().map(|mut children| {
                         children
                             .iter_mut()
                             .rev()
