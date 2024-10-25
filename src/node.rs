@@ -33,6 +33,7 @@ pub trait TreeNode:
     type DataRefMut<'b>: DerefMut<Target = Self::Data>
     where
         Self: 'b;
+
     type NodeRef: TreeNodeRef<Inner = Self>;
 
     type ChildrenRef<'b>: Deref<Target = Vec<Self::NodeRef>>

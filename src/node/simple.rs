@@ -1,4 +1,4 @@
-use crate::{noderef::simple::NodeRef, UniqueId};
+use crate::UniqueId;
 
 use super::{internal::NodeInternal, TreeNode};
 
@@ -11,8 +11,8 @@ where
 {
     id: Id,
     data: Data,
-    parent: Box<Option<NodeRef<Self>>>,
-    children: Option<Vec<NodeRef<Self>>>,
+    parent: Box<Option<<Node<Data, Id> as TreeNode>::NodeRef>>,
+    children: Option<Vec<<Node<Data, Id> as TreeNode>::NodeRef>>,
 }
 
 impl<Data, Id> NodeInternal<Data, Id> for Node<Data, Id>
@@ -40,7 +40,7 @@ where
     Id: UniqueId + 'static,
     Data: std::hash::Hash + std::fmt::Display + Clone + 'static,
 {
-    type NodeRef = NodeRef<Self>;
+    type NodeRef = crate::noderef::simple::NodeRef<Self>;
     type Data = Data;
     type Id = Id;
     type DataRef<'b> = &'b Data;
@@ -48,7 +48,7 @@ where
     type ChildrenRef<'b> = &'b Vec<Self::NodeRef>;
     type ChildrenRefMut<'b> = &'b mut Vec<Self::NodeRef>;
 
-    fn new(id: Self::Id, data: Self::Data, children: Option<Vec<NodeRef<Self>>>) -> Self {
+    fn new(id: Self::Id, data: Self::Data, children: Option<Vec<Self::NodeRef>>) -> Self {
         Self {
             id,
             data,

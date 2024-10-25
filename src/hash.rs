@@ -25,6 +25,23 @@ pub enum NodeHash {
     },
 }
 
+impl<T: TreeNodeRef> From<T> for NodeHash {
+    fn from(noderef: T) -> Self {
+        Self::Independent {
+            hash: noderef.node().xxhash(),
+        }
+    }
+}
+
+impl<T: TreeNodeRef> From<(NodePosition, T)> for NodeHash {
+    fn from(from: (NodePosition, T)) -> Self {
+        Self::Positional {
+            position: from.0,
+            hash: from.1.node().xxhash(),
+        }
+    }
+}
+
 impl NodeHash {
     /// Get the DefaultHasher hash value for this NodeHash
     pub fn get_hash(&self) -> u64 {

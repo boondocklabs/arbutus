@@ -17,6 +17,14 @@ pub struct NodePosition {
 }
 
 impl NodePosition {
+    pub fn zero() -> Self {
+        NodePosition {
+            depth: 0,
+            index: 0,
+            child_index: 0,
+        }
+    }
+
     /// Get the depth of this node
     pub fn depth(&self) -> usize {
         self.depth

@@ -3,14 +3,14 @@
 //! The `NodeBuilder` and `TreeBuilder` types enable building tree structures in a composable way.
 //!
 
-use std::marker::PhantomData;
+use std::{collections::HashMap, marker::PhantomData};
 
 use tracing::{debug, debug_span};
 
 use crate::{
     id::UniqueGenerator,
     node::{refcell, TreeNode},
-    NodeDepth, NodeIndex, Tree, TreeNodeRef,
+    NodeDepth, NodeIndex, NodePosition, Tree, TreeNodeRef,
 };
 
 type DefaultNodeRef<T> = crate::noderef::rc::NodeRef<T>;
@@ -39,10 +39,10 @@ pub struct NodeBuilder<
     node_ref: &'a mut R,
     // UniqueGenerator handle
     idgen: &'a mut G,
-    // Tree depth of this node
-    depth: NodeDepth,
-    // Horizontal index of this node
-    index: NodeIndex,
+
+    depth_index: &'a mut HashMap<NodeDepth, NodeIndex>,
+
+    position: NodePosition,
 
     _phantom: (
         PhantomData<D>,
@@ -65,12 +65,17 @@ where
     ///
     /// * `node`: The parent node to build children for.
     /// * `idgen`: The ID generator to use for child nodes.
-    pub fn new(node_ref: &'a mut R, idgen: &'a mut G, depth: NodeDepth, index: NodeIndex) -> Self {
+    pub fn new(
+        node_ref: &'a mut R,
+        idgen: &'a mut G,
+        position: NodePosition,
+        depth_index: &'a mut HashMap<NodeDepth, NodeIndex>,
+    ) -> Self {
         Self {
             node_ref,
             idgen,
-            depth,
-            index,
+            position,
+            depth_index,
             _phantom: (PhantomData, PhantomData, PhantomData, PhantomData),
         }
     }
@@ -91,14 +96,29 @@ where
         // Generate a new ID for this child
         let id = self.idgen.generate();
 
+        let depth_index = self
+            .depth_index
+            .entry(self.position().depth() + 1)
+            .or_insert(0);
+
+        let position = NodePosition {
+            depth: self.position.depth + 1,
+            index: *depth_index,
+            child_index,
+        };
+
+        println!("DEPTH {} INDEX {}", self.position.depth + 1, *depth_index);
+
+        *depth_index += 1;
+
         // Create a new node for this child
         let node = N::new(id, data, None).with_parent(self.node_ref.clone());
         let mut child_node_ref = R::new(node);
         let mut node_builder = NodeBuilder::<D, E, G, N, R>::new(
             &mut child_node_ref,
-            &mut self.idgen,
-            self.depth + 1,
-            self.index + child_index,
+            self.idgen,
+            position,
+            self.depth_index,
         );
 
         // Call the supplied closure with the NodeBuilder to add this node's children
@@ -116,6 +136,10 @@ where
 
     pub fn node_mut<'b>(&'b mut self) -> &'b mut R {
         &mut self.node_ref
+    }
+
+    pub fn position(&self) -> &NodePosition {
+        &self.position
     }
 }
 
@@ -150,6 +174,7 @@ where
 {
     idgen: G,
     root: Option<R>,
+    depth_index: HashMap<NodeDepth, NodeIndex>,
     debug_span: tracing::Span,
     _phantom: (PhantomData<E>, PhantomData<N>, PhantomData<D>),
 }
@@ -172,6 +197,7 @@ where
             idgen: G::default(),
             root: None,
             debug_span,
+            depth_index: HashMap::new(),
             _phantom: (PhantomData, PhantomData, PhantomData),
         }
     }
@@ -208,8 +234,12 @@ where
             let node = TreeNode::new(id, data, None);
             let mut node_ref = TreeNodeRef::new(node);
 
-            let mut node_builder =
-                NodeBuilder::<D, E, G, N, R>::new(&mut node_ref, &mut self.idgen, 0, 0);
+            let mut node_builder = NodeBuilder::<D, E, G, N, R>::new(
+                &mut node_ref,
+                &mut self.idgen,
+                NodePosition::zero(),
+                &mut self.depth_index,
+            );
 
             // Call the supplied closure with the NodeBuilder to add this node's children
             f(&mut node_builder)?;
@@ -298,20 +328,19 @@ mod tests {
 
         let tree = TreeBuilder::<TestData, MyError>::new()
             .root(TestData::Foo, |foo| {
-                assert_eq!(foo.depth, 0);
-                assert_eq!(foo.index, 0);
+                assert_eq!(foo.position, NodePosition::zero());
                 foo.child(TestData::Bar, |bar| {
-                    assert_eq!(bar.depth, 1);
-                    assert_eq!(bar.index, 0);
+                    assert_eq!(bar.position.depth, 1);
+                    assert_eq!(bar.position.index, 0);
                     bar.child(TestData::Baz, |baz| {
-                        assert_eq!(baz.depth, 2);
-                        assert_eq!(baz.index, 0);
+                        assert_eq!(baz.position.depth, 2);
+                        assert_eq!(baz.position.index, 0);
                         Ok(())
                     })
                 })?;
                 foo.child(TestData::String("Hello".into()), |s| {
-                    assert_eq!(s.depth, 1);
-                    assert_eq!(s.index, 1);
+                    assert_eq!(s.position.depth, 1);
+                    assert_eq!(s.position.index, 1);
                     Ok(())
                 })?;
 
