@@ -1,9 +1,9 @@
 use std::{
-    hash::Hasher,
+    hash::{Hash as _, Hasher},
     ops::{Deref, DerefMut},
 };
 
-use crate::{id::UniqueId, noderef::TreeNodeRef};
+use crate::{id::UniqueId, noderef::TreeNodeRef, NodePosition};
 use xxhash_rust::xxh64::Xxh64;
 
 pub mod refcell;
@@ -11,20 +11,18 @@ pub mod simple;
 
 /// Sealed trait for internal Node methods
 pub(crate) mod internal {
-    use crate::UniqueId;
+    use super::TreeNode;
 
-    pub trait NodeInternal<Data, Id>
+    pub trait NodeInternal<Node>
     where
-        Id: UniqueId,
-        Data: std::hash::Hash + Clone + std::fmt::Display,
+        Node: TreeNode,
     {
-        fn set_id(&mut self, id: Id);
+        fn set_id(&mut self, id: Node::Id);
+        fn set_parent(&mut self, parent: Node::NodeRef);
     }
 }
 
-pub trait TreeNode:
-    internal::NodeInternal<<Self as TreeNode>::Data, <Self as TreeNode>::Id> + Clone + std::hash::Hash
-{
+pub trait TreeNode: internal::NodeInternal<Self> + Clone + std::hash::Hash {
     type Data: std::hash::Hash + Clone + std::fmt::Display;
     type Id: UniqueId;
     type DataRef<'b>: Deref<Target = Self::Data>
@@ -48,7 +46,14 @@ pub trait TreeNode:
 
     fn with_parent(self, parent: Self::NodeRef) -> Self;
 
+    fn with_position(self, position: NodePosition) -> Self;
+
     fn id(&self) -> Self::Id;
+
+    fn get_position(&self) -> Option<&NodePosition>;
+
+    fn set_subtree_hash(&mut self, subtree_hash: u64);
+    fn get_subtree_hash(&self) -> u64;
 
     fn data<'b>(&'b self) -> Self::DataRef<'b>;
     fn data_mut<'b>(&'b mut self) -> Self::DataRefMut<'b>;
@@ -97,10 +102,19 @@ pub trait TreeNode:
         Some(())
     }
 
-    /// Delete a child node from this node at the specified index
-    fn remove_child_index(&mut self, index: usize) {
+    /// Remove a child node from this node at the specified index, returing
+    /// the NodeRef to the removed child.
+    fn remove_child_index(&mut self, index: usize) -> Option<Self::NodeRef> {
         if let Some(mut children) = self.children_mut() {
-            children.remove(index);
+            Some(children.remove(index))
+        } else {
+            None
+        }
+    }
+
+    fn replace_child(&mut self, source: Self::NodeRef, index: usize) {
+        if let Some(mut children) = self.children_mut() {
+            children[index] = source
         }
     }
 
@@ -115,6 +129,12 @@ pub trait TreeNode:
     fn xxhash(&self) -> u64 {
         let mut hasher = Xxh64::new(0);
         self.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    fn data_xxhash(&self) -> u64 {
+        let mut hasher = Xxh64::new(0);
+        self.data().hash(&mut hasher);
         hasher.finish()
     }
 

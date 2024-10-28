@@ -3,9 +3,10 @@
 //! The `NodeBuilder` and `TreeBuilder` types enable building tree structures in a composable way.
 //!
 
-use std::{collections::HashMap, marker::PhantomData};
+use std::{collections::HashMap, hash::Hasher as _, marker::PhantomData};
 
 use tracing::{debug, debug_span};
+use xxhash_rust::xxh64::Xxh64;
 
 use crate::{
     id::UniqueGenerator,
@@ -44,12 +45,31 @@ pub struct NodeBuilder<
 
     position: NodePosition,
 
+    hasher: Xxh64,
+
     _phantom: (
         PhantomData<D>,
         PhantomData<E>,
         PhantomData<N>,
         PhantomData<R>,
     ),
+}
+
+impl<'a, D, E, G, N, R> Drop for NodeBuilder<'a, D, E, G, N, R>
+where
+    D: std::fmt::Display,
+    G: UniqueGenerator,
+    N: TreeNode<Id = G::Output, NodeRef = R>,
+    R: TreeNodeRef<Inner = N>,
+{
+    fn drop(&mut self) {
+        // Update the hasher with the hash value of the data
+        let mut node = self.node_ref.node_mut();
+        node.hash(&mut self.hasher);
+        let subtree_hash = self.hasher.finish();
+        debug!("Drop {} hash finish 0x{:X}", node.id(), subtree_hash);
+        node.set_subtree_hash(subtree_hash);
+    }
 }
 
 impl<'a, D, E, G, N, R> NodeBuilder<'a, D, E, G, N, R>
@@ -76,6 +96,7 @@ where
             idgen,
             position,
             depth_index,
+            hasher: Xxh64::new(0),
             _phantom: (PhantomData, PhantomData, PhantomData, PhantomData),
         }
     }
@@ -107,12 +128,12 @@ where
             child_index,
         };
 
-        println!("DEPTH {} INDEX {}", self.position.depth + 1, *depth_index);
-
         *depth_index += 1;
 
         // Create a new node for this child
-        let node = N::new(id, data, None).with_parent(self.node_ref.clone());
+        let node = N::new(id, data, None)
+            .with_parent(self.node_ref.clone())
+            .with_position(position);
         let mut child_node_ref = R::new(node);
         let mut node_builder = NodeBuilder::<D, E, G, N, R>::new(
             &mut child_node_ref,
@@ -124,9 +145,18 @@ where
         // Call the supplied closure with the NodeBuilder to add this node's children
         f(&mut node_builder)?;
 
-        // Create a new NodeRef for this child node
+        // Drop the node builder of the child, so we drop the mutable reference
+        // to child_node_ref
+        drop(node_builder);
 
+        // Update the hasher with the new child
+        self.hasher
+            .write_u64(child_node_ref.node().get_subtree_hash());
+        //child_node_ref.node().hash(&mut self.hasher);
+
+        // Push the child to the parent node
         self.node_ref.node_mut().push_child(child_node_ref);
+
         Ok(())
     }
 
@@ -205,7 +235,7 @@ where
     /// Returns the constructed tree when finished building it.
     pub fn done(self) -> Result<Option<Tree<R, G>>, E> {
         self.debug_span.in_scope(|| {
-            debug!("Finished build tree");
+            debug!("Finished building tree");
 
             if let Some(root) = self.root {
                 Ok(Some(Tree::from_node(root, Some(self.idgen))))
@@ -231,8 +261,8 @@ where
         let id = self.idgen.generate();
 
         self.debug_span.in_scope(|| {
-            let node = TreeNode::new(id, data, None);
-            let mut node_ref = TreeNodeRef::new(node);
+            let node = N::new(id, data, None).with_position(NodePosition::zero());
+            let mut node_ref = R::new(node);
 
             let mut node_builder = NodeBuilder::<D, E, G, N, R>::new(
                 &mut node_ref,
@@ -243,6 +273,7 @@ where
 
             // Call the supplied closure with the NodeBuilder to add this node's children
             f(&mut node_builder)?;
+            drop(node_builder);
 
             if self.root.is_none() {
                 debug!("Added root");

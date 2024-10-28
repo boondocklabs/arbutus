@@ -1,7 +1,4 @@
-use std::hash::{Hash as _, Hasher};
-
 use crate::{noderef::NodeRefId, IndexedTree, Tree, TreeNode, TreeNodeRef, UniqueGenerator};
-use xxhash_rust::xxh64::Xxh64;
 
 /// Tree Comparison
 
@@ -11,6 +8,8 @@ where
     G: UniqueGenerator<Output = NodeRefId<R>> + 'static,
 {
     fn eq(&self, other: &Self) -> bool {
+        self.node().get_subtree_hash() == other.node().get_subtree_hash()
+        /*
         let mut hasher_self = Xxh64::new(0);
         let mut hasher_other = Xxh64::new(0);
 
@@ -28,6 +27,7 @@ where
         let other_hash = hasher_other.finish();
 
         self_hash == other_hash
+        */
     }
 }
 

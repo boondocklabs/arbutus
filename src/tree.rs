@@ -4,7 +4,7 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 use xxhash_rust::xxh64::Xxh64;
 
 use crate::{
@@ -36,8 +36,8 @@ where
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Tree")
             .field(
-                "positional_hash",
-                &format_args!("0x{:X}", self.xxhash_positional()),
+                "subtree_hash",
+                &format_args!("0x{:X}", self.root().node().get_subtree_hash()),
             )
             .field("depth", &self.depth())
             .field("width", &self.width())
@@ -55,6 +55,10 @@ where
             root: None,
             idgen: None,
         }
+    }
+
+    pub fn generator(&self) -> &G {
+        self.idgen.as_ref().unwrap()
     }
 
     /// Allocate a new node ID
@@ -148,8 +152,57 @@ where
         }
     }
 
-    pub fn insert_node(&mut self, parent: &mut R, index: usize, node: R) -> Option<()> {
-        parent.node_mut().insert_child(node, index)
+    /// Remove a child from a node at the given index
+    pub fn remove_child(&mut self, parent: &mut R, index: usize) -> Option<R> {
+        let parent_id = parent.node().id();
+        if let Some(removed) = parent.node_mut().remove_child_index(index) {
+            debug!("Child {index} removed from {parent_id}");
+            Some(removed)
+        } else {
+            warn!("Child not found attempting to remove child at index {index}");
+            None
+        }
+    }
+
+    /// Remove all children from the specified parent node
+    pub fn remove_children(&mut self, parent: &mut R) {
+        let parent_id = parent.node().id();
+        parent.node_mut().set_children(None);
+        debug!("All children removed from {parent_id}");
+    }
+
+    pub fn set_children(&mut self, parent: &mut R, mut children: Vec<R>) {
+        for child in &mut children {
+            let new_id = self.generate_id();
+            child.node_mut().set_id(new_id);
+            child.node_mut().set_parent(parent.clone());
+        }
+        parent.node_mut().set_children(Some(children));
+    }
+
+    /// Replace a child in a node with a new child at the given index
+    pub fn replace_child(&mut self, parent: &mut R, index: usize, mut new: R) {
+        new.node_mut().set_id(self.generate_id());
+
+        if let Some(mut children) = new.node_mut().children_mut() {
+            for child in children.iter_mut() {
+                let new_id = self.generate_id();
+                child.node_mut().set_id(new_id);
+            }
+        }
+
+        new.node_mut().set_parent(parent.clone());
+        parent.node_mut().replace_child(new, index);
+    }
+
+    /// Insert a child into a parent at the given index
+    pub fn insert_child(&mut self, parent: &mut R, index: usize, mut new: R) -> Option<()> {
+        new.node_mut().set_parent(parent.clone());
+        parent.node_mut().insert_child(new, index)
+    }
+
+    pub fn replace_node(&mut self, dest: &mut R, source: &R) {
+        *dest.node_mut().data_mut() = source.node().data().clone();
     }
 
     /// Create a new node from the provided data. Does not insert into the tree, but allocates a new ID
@@ -176,26 +229,23 @@ where
         R::Data: Clone,
         <<R as TreeNodeRef>::Inner as TreeNode>::Data: Clone,
     {
-        let mut nodes = Vec::new();
+        println!("INSERT SUBTREE");
+        //let mut nodes = Vec::new();
 
         subtree
             .for_each_mut(|r| {
-                // Allocate a new ID for this node in the subtree
                 let new_id = self.generate_id();
-
-                // Clone the inner Node
-                let mut new_node = r.node().clone();
-                new_node.set_id(new_id);
-
-                let new_noderef = R::new(new_node);
-                nodes.push(new_noderef);
+                r.node_mut().set_id(new_id);
 
                 Ok::<(), ()>(())
             })
             .unwrap();
 
+        // Set the parent of the subtree
+        subtree.node_mut().set_parent(parent.clone());
+
         // Insert the root of the cloned subtree into the parent node at the provided index
-        parent.node_mut().insert_child(nodes.remove(0), index);
+        parent.node_mut().insert_child(subtree, index);
 
         Some(())
     }
@@ -319,7 +369,7 @@ where
     }
 
     pub fn insert_noderef(&mut self, parent: &mut R, index: usize, node: R) -> Option<()> {
-        self.tree.insert_node(parent, index, node.clone())?;
+        self.tree.insert_child(parent, index, node.clone())?;
 
         for node in node.into_iter() {
             let id = node.node().id().clone();
@@ -332,7 +382,7 @@ where
         Some(())
     }
 
-    pub fn insert_node(
+    pub fn insert_child(
         &mut self,
         parent_id: NodeRefId<R>,
         index: usize,
@@ -342,7 +392,7 @@ where
 
         let node = self.tree.create_node(data)?;
 
-        self.tree.insert_node(&mut parent, index, node.clone())?;
+        self.tree.insert_child(&mut parent, index, node.clone())?;
 
         for node in node.into_iter() {
             let id = node.node().id().clone();

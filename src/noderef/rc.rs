@@ -92,7 +92,6 @@ where
     fn node<'b>(&'b self) -> Self::InnerRef<'b> {
         let r: &'b RefCell<T> = &self.node_ref;
         r.borrow()
-        //(&*self.node_ref).borrow()
     }
 
     fn node_mut<'b>(&'b mut self) -> Self::InnerRefMut<'b> {
@@ -168,5 +167,18 @@ where
     fn into_iter(self) -> Self::IntoIter {
         // Create an iterator starting with the root node in the stack
         NodeRefIter::new(self)
+    }
+}
+
+impl<'a, N> IntoIterator for &'a NodeRef<N>
+where
+    N: TreeNode<NodeRef = NodeRef<N>> + 'static,
+{
+    type Item = IterNode<NodeRef<N>>;
+    type IntoIter = NodeRefIter<NodeRef<N>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        // Create an iterator starting with the root node in the stack
+        NodeRefIter::new(self.clone())
     }
 }

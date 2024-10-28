@@ -9,42 +9,7 @@ pub type NodeRefId<R> = <<R as TreeNodeRef>::Inner as TreeNode>::Id;
 use crate::{display::TreeDisplay, iterator::IterNode, node::TreeNode};
 
 pub(crate) mod internal {
-    use crate::TreeNode as _;
-
-    use super::TreeNodeRef;
-    use std::collections::VecDeque;
-
-    pub trait NodeRefInternal<Inner> {
-        /// Iterate through each node from the specified NodeRef. Calls a closure with a mutable reference to each NodeRef
-        fn for_each_mut<E, F>(&mut self, mut f: F) -> Result<(), E>
-        where
-            Self: Sized + TreeNodeRef,
-            F: FnMut(&mut Self) -> Result<(), E>,
-        {
-            let mut stack: VecDeque<Self> = VecDeque::from([self.clone()]);
-
-            loop {
-                let current = stack.pop_front();
-                if let None = current {
-                    break;
-                };
-                let node = current.map(|mut node| {
-                    node.node_mut().children_mut().map(|mut children| {
-                        children
-                            .iter_mut()
-                            .rev()
-                            .for_each(|child| stack.push_front(child.clone()))
-                    });
-                    node
-                });
-
-                if let Some(mut node) = node {
-                    f(&mut node)?
-                }
-            }
-            Ok(())
-        }
-    }
+    pub trait NodeRefInternal<Inner> {}
 }
 
 pub trait TreeNodeRef:
@@ -101,6 +66,36 @@ pub trait TreeNodeRef:
     fn for_each<E, F>(&self, f: F) -> Result<(), E>
     where
         F: Fn(usize, Self) -> Result<(), E>;
+
+    /// Iterate through each node from the specified NodeRef. Calls a closure with a mutable reference to each NodeRef
+    fn for_each_mut<E, F>(&mut self, mut f: F) -> Result<(), E>
+    where
+        Self: Sized + TreeNodeRef,
+        F: FnMut(&mut Self) -> Result<(), E>,
+    {
+        let mut stack: Vec<Self> = Vec::from([self.clone()]);
+
+        loop {
+            let current = stack.pop();
+            if let None = current {
+                break;
+            };
+            let node = current.map(|mut node| {
+                node.node_mut().children_mut().map(|mut children| {
+                    children
+                        .iter_mut()
+                        .rev()
+                        .for_each(|child| stack.push(child.clone()))
+                });
+                node
+            });
+
+            if let Some(mut node) = node {
+                f(&mut node)?
+            }
+        }
+        Ok(())
+    }
 }
 
 trait TreeFormat {

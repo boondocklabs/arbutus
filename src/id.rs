@@ -1,4 +1,4 @@
-use std::sync::atomic::AtomicU64;
+use std::{rc::Rc, sync::atomic::AtomicU64};
 
 pub trait UniqueId:
     Copy + Clone + Ord + PartialEq + std::fmt::Debug + std::fmt::Display + std::hash::Hash
@@ -10,16 +10,16 @@ impl UniqueId for u64 {
     type Output = Self;
 }
 
-pub trait UniqueGenerator: Default + std::fmt::Debug + 'static {
+pub trait UniqueGenerator: Default + std::fmt::Debug + Clone + 'static {
     type Output: UniqueId;
 
     /// Generate a unique value
     fn generate(&self) -> Self::Output;
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct AtomicU64Generator {
-    next_id: AtomicU64,
+    next_id: Rc<AtomicU64>,
 }
 
 impl UniqueGenerator for AtomicU64Generator {
@@ -31,7 +31,7 @@ impl UniqueGenerator for AtomicU64Generator {
     }
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct UuidGenerator;
 
 #[derive(Copy, Clone, Debug, Hash)]

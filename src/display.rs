@@ -70,7 +70,9 @@ impl TreeDisplay {
 
                 write!(
                     f,
-                    " [depth:{} index:{} child_index:{}]",
+                    " [subtree_hash: 0x{:X} hash: 0x{:X} depth:{} index:{} child_index:{}]",
+                    (*node).node().get_subtree_hash(),
+                    (*node).node().xxhash(),
                     node.depth(),
                     node.index(),
                     node.position().child_index()

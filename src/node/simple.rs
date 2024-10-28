@@ -1,4 +1,4 @@
-use crate::UniqueId;
+use crate::{NodePosition, UniqueId};
 
 use super::{internal::NodeInternal, TreeNode};
 
@@ -13,15 +13,21 @@ where
     data: Data,
     parent: Box<Option<<Node<Data, Id> as TreeNode>::NodeRef>>,
     children: Option<Vec<<Node<Data, Id> as TreeNode>::NodeRef>>,
+    position: Option<NodePosition>,
+    subtree_hash: u64,
 }
 
-impl<Data, Id> NodeInternal<Data, Id> for Node<Data, Id>
+impl<Data, Id> NodeInternal<Self> for Node<Data, Id>
 where
     Id: UniqueId + 'static,
     Data: std::hash::Hash + std::fmt::Display + Clone + 'static,
 {
     fn set_id(&mut self, id: Id) {
         self.id = id;
+    }
+
+    fn set_parent(&mut self, parent: <Self as TreeNode>::NodeRef) {
+        self.parent = Box::new(Some(parent));
     }
 }
 
@@ -31,7 +37,8 @@ where
     Data: std::hash::Hash + std::fmt::Display + Clone + 'static,
 {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.data().hash(state)
+        self.num_children().hash(state);
+        self.data().hash(state);
     }
 }
 
@@ -54,11 +61,18 @@ where
             data,
             children,
             parent: Box::new(None),
+            position: None,
+            subtree_hash: 0,
         }
     }
 
     fn with_parent(mut self, parent: Self::NodeRef) -> Self {
         self.parent = Box::new(Some(parent));
+        self
+    }
+
+    fn with_position(mut self, position: NodePosition) -> Self {
+        self.position = Some(position);
         self
     }
 
@@ -82,12 +96,6 @@ where
         self.children.as_mut()
     }
 
-    fn remove_child_index(&mut self, index: usize) {
-        if let Some(children) = &mut self.children {
-            let _removed = children.remove(index);
-        }
-    }
-
     fn parent<'b>(&'b self) -> Option<&'b Self::NodeRef> {
         (&*self.parent).as_ref()
     }
@@ -98,5 +106,17 @@ where
 
     fn set_children(&mut self, children: Option<Vec<Self::NodeRef>>) {
         self.children = children
+    }
+
+    fn get_position(&self) -> Option<&NodePosition> {
+        self.position.as_ref()
+    }
+
+    fn set_subtree_hash(&mut self, tree_hash: u64) {
+        self.subtree_hash = tree_hash;
+    }
+
+    fn get_subtree_hash(&self) -> u64 {
+        self.subtree_hash
     }
 }

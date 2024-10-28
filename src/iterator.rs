@@ -1,10 +1,15 @@
 use std::collections::HashMap;
-use std::{collections::VecDeque, ops::Deref};
+use std::ops::Deref;
+use std::ops::DerefMut;
+
+use colored::Colorize;
 
 use crate::node::TreeNode;
 use crate::TreeNodeRef;
 
-#[derive(Debug, Hash, Clone, Copy, PartialEq, Eq)]
+pub mod leaf;
+
+#[derive(Debug, Hash, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct NodePosition {
     // Vertical depth
     pub depth: usize,
@@ -14,6 +19,21 @@ pub struct NodePosition {
 
     // Index of the child relative to the parent
     pub child_index: usize,
+}
+
+impl std::fmt::Display for NodePosition {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}: {} {}: {} {}: {}",
+            "depth".bright_cyan(),
+            self.depth().to_string().bright_purple(),
+            "index".bright_cyan(),
+            self.index().to_string().bright_purple(),
+            "child_index".bright_cyan(),
+            self.child_index().to_string().bright_purple(),
+        )
+    }
 }
 
 impl NodePosition {
@@ -63,6 +83,10 @@ where
         self.position.depth
     }
 
+    pub fn child_index(&self) -> usize {
+        self.position.child_index
+    }
+
     pub fn position(&self) -> &NodePosition {
         &self.position
     }
@@ -79,11 +103,20 @@ where
     }
 }
 
+impl<R> DerefMut for IterNode<R>
+where
+    R: TreeNodeRef,
+{
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.node
+    }
+}
+
 pub struct NodeRefIter<R>
 where
     R: TreeNodeRef,
 {
-    stack: VecDeque<(usize, usize, usize, R)>,
+    stack: Vec<(usize, usize, usize, R)>,
     index: HashMap<usize, usize>,
 }
 
@@ -93,7 +126,7 @@ where
 {
     pub fn new(node: R) -> Self {
         Self {
-            stack: VecDeque::from([(0, 0, 0, node)]),
+            stack: Vec::from([(0, 0, 0, node)]),
             index: HashMap::new(),
         }
     }
@@ -106,7 +139,7 @@ where
     type Item = IterNode<R>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let current = self.stack.pop_front();
+        let current = self.stack.pop();
 
         current.map(|(child_index, index, depth, node)| {
             node.node().children().map(|children| {
@@ -125,9 +158,9 @@ where
                     // that will pop the nodes back off in reverse order
                     .rev()
                     .for_each(|(child_index, child)| {
-                        self.stack.push_front((
+                        self.stack.push((
                             child_index,
-                            // *index is positive offset by the number of children we're adding to the VecDeque,
+                            // *index is positive offset by the number of children we're adding to the Vec,
                             // so we need to decrement the next index by 1 as we're iterating backwards
                             // The child index is also decreasing, so we can subtract the difference from the
                             // total nodes to get an index offset

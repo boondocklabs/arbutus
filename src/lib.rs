@@ -10,18 +10,22 @@
 
 mod builder;
 mod compare;
+mod diff;
 mod display;
+mod edit;
 mod hash;
 mod id;
 mod index;
 mod iterator;
 mod tree;
 
+#[cfg(test)]
+pub(crate) mod test;
+
 pub mod node;
 pub mod noderef;
 
 pub use builder::*;
-pub use hash::{NodeHash, TreeHashIndex};
 pub use id::*;
 pub use iterator::NodePosition;
 pub use tree::IndexedTree;
@@ -29,6 +33,10 @@ pub use tree::Tree;
 
 pub use node::TreeNode;
 pub use noderef::TreeNodeRef;
+
+pub use iterator::leaf;
+
+pub use diff::TreeDiff;
 
 pub type NodeDepth = usize;
 pub type NodeIndex = usize;
