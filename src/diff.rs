@@ -21,6 +21,7 @@ where
     ReplaceNode { dest: R, source: R },
 }
 
+#[derive(Debug)]
 pub struct TreePatch<R>
 where
     R: TreeNodeRef + 'static,

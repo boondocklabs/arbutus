@@ -1,9 +1,8 @@
-use crate::{NodePosition, UniqueId};
+use crate::{NodePosition, TreeNodeRef as _, UniqueId};
 
 use super::{internal::NodeInternal, TreeNode};
 
-/// TreeNodeSimple provides no interior mutability
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Node<Data, Id = crate::NodeId>
 where
     Id: UniqueId + 'static,
@@ -11,10 +10,38 @@ where
 {
     id: Id,
     data: Data,
-    parent: Box<Option<<Node<Data, Id> as TreeNode>::NodeRef>>,
-    children: Option<Vec<<Node<Data, Id> as TreeNode>::NodeRef>>,
+    parent: Option<<Self as TreeNode>::NodeRef>,
+    children: Option<Vec<<Self as TreeNode>::NodeRef>>,
     position: Option<NodePosition>,
     subtree_hash: u64,
+}
+
+impl<Data, Id> std::fmt::Debug for Node<Data, Id>
+where
+    Id: UniqueId + 'static,
+    Data: std::hash::Hash + std::fmt::Debug + std::fmt::Display + Clone + 'static,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TreeNode")
+            .field("id", &self.id)
+            .field("hash", &format_args!("0x{:X}", self.xxhash()))
+            .field("data", &format_args!("{}", self.data()))
+            .field(
+                "parent_id",
+                &format_args!("{:?}", self.parent.as_ref().map(|p| p.node().id())),
+            )
+            .field(
+                "child_ids",
+                &format_args!(
+                    "{:?}",
+                    self.children().map(|children| children
+                        .iter()
+                        .map(|c| c.node().id())
+                        .collect::<Vec<Id>>())
+                ),
+            )
+            .finish()
+    }
 }
 
 impl<Data, Id> NodeInternal<Self> for Node<Data, Id>
@@ -27,7 +54,7 @@ where
     }
 
     fn set_parent(&mut self, parent: <Self as TreeNode>::NodeRef) {
-        self.parent = Box::new(Some(parent));
+        self.parent = Some(parent);
     }
 }
 
@@ -47,7 +74,7 @@ where
     Id: UniqueId + 'static,
     Data: std::hash::Hash + std::fmt::Display + Clone + 'static,
 {
-    type NodeRef = crate::noderef::simple::NodeRef<Self>;
+    type NodeRef = crate::noderef::rc::NodeRef<Self>;
     type Data = Data;
     type Id = Id;
     type DataRef<'b> = &'b Data;
@@ -60,14 +87,14 @@ where
             id,
             data,
             children,
-            parent: Box::new(None),
+            parent: None,
             position: None,
             subtree_hash: 0,
         }
     }
 
     fn with_parent(mut self, parent: Self::NodeRef) -> Self {
-        self.parent = Box::new(Some(parent));
+        self.parent = Some(parent);
         self
     }
 
@@ -97,11 +124,11 @@ where
     }
 
     fn parent<'b>(&'b self) -> Option<&'b Self::NodeRef> {
-        (&*self.parent).as_ref()
+        self.parent.as_ref()
     }
 
     fn parent_mut<'b>(&'b mut self) -> Option<&'b mut Self::NodeRef> {
-        (&mut *self.parent).as_mut()
+        self.parent.as_mut()
     }
 
     fn set_children(&mut self, children: Option<Vec<Self::NodeRef>>) {

@@ -5,7 +5,7 @@ use crate::{
     TreeNode,
 };
 
-use super::{internal::NodeRefInternal, TreeNodeRef};
+use super::{internal::NodeRefInternal, TreeFormat as _, TreeNodeRef};
 
 /// Simple reference noderef. Does not allow cloning.
 #[derive(Debug, Hash)]
@@ -115,5 +115,14 @@ where
     fn into_iter(self) -> Self::IntoIter {
         // Create an iterator starting with the root node in the stack
         NodeRefIter::new(self)
+    }
+}
+
+impl<T> std::fmt::Display for NodeRef<T>
+where
+    T: TreeNode<NodeRef = Self> + 'static,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.tree_format(f)
     }
 }

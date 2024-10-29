@@ -9,6 +9,7 @@ use xxhash_rust::xxh64::Xxh64;
 
 use crate::{
     index::{BTreeIndex, TreeIndex},
+    leaf::LeafIter,
     node::TreeNode,
     noderef::{NodeRefId, TreeNodeRef},
     UniqueGenerator,
@@ -431,6 +432,15 @@ where
             }
         }
         self.leaves = leaves;
+    }
+
+    /// Get a [`LeafIter`] instance for this tree, providing an iterator which
+    /// traverses backwards through the tree starting from the leaves
+    pub fn leaf_iter(&self) -> LeafIter<R>
+    where
+        R: std::fmt::Debug,
+    {
+        LeafIter::new(self.leaves())
     }
 }
 

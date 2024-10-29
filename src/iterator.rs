@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::ops::DerefMut;
+use std::usize;
 
 use colored::Colorize;
 
@@ -42,6 +43,15 @@ impl NodePosition {
             depth: 0,
             index: 0,
             child_index: 0,
+        }
+    }
+
+    // Return a NodePosition with all positions set to usize::MAX
+    pub fn max() -> Self {
+        NodePosition {
+            depth: usize::MAX,
+            index: usize::MAX,
+            child_index: usize::MAX,
         }
     }
 
