@@ -6,7 +6,7 @@ use super::{internal::NodeInternal, TreeNode};
 pub struct Node<Data, Id = crate::NodeId>
 where
     Id: UniqueId + 'static,
-    Data: std::hash::Hash + std::fmt::Display + Clone + 'static,
+    Data: std::hash::Hash + std::fmt::Display + std::fmt::Debug + Clone + 'static,
 {
     id: Id,
     data: Data,
@@ -47,7 +47,7 @@ where
 impl<Data, Id> NodeInternal<Self> for Node<Data, Id>
 where
     Id: UniqueId + 'static,
-    Data: std::hash::Hash + std::fmt::Display + Clone + 'static,
+    Data: std::hash::Hash + std::fmt::Display + std::fmt::Debug + Clone + 'static,
 {
     fn set_id(&mut self, id: Id) {
         self.id = id;
@@ -56,12 +56,16 @@ where
     fn set_parent(&mut self, parent: <Self as TreeNode>::NodeRef) {
         self.parent = Some(parent);
     }
+
+    fn take_children(&mut self) -> Option<Vec<<Self as TreeNode>::NodeRef>> {
+        self.children.take()
+    }
 }
 
 impl<Data, Id> std::hash::Hash for Node<Data, Id>
 where
     Id: UniqueId + 'static,
-    Data: std::hash::Hash + std::fmt::Display + Clone + 'static,
+    Data: std::hash::Hash + std::fmt::Display + std::fmt::Debug + Clone + 'static,
 {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.num_children().hash(state);
@@ -72,7 +76,7 @@ where
 impl<Data, Id> TreeNode for Node<Data, Id>
 where
     Id: UniqueId + 'static,
-    Data: std::hash::Hash + std::fmt::Display + Clone + 'static,
+    Data: std::hash::Hash + std::fmt::Display + Clone + std::fmt::Debug + 'static,
 {
     type NodeRef = crate::noderef::rc::NodeRef<Self>;
     type Data = Data;

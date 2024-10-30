@@ -6,7 +6,7 @@ use std::{
 use crate::{id::UniqueId, noderef::TreeNodeRef, NodePosition};
 use xxhash_rust::xxh64::Xxh64;
 
-pub mod refcell;
+//pub mod refcell;
 pub mod simple;
 
 /// Sealed trait for internal Node methods
@@ -19,10 +19,15 @@ pub(crate) mod internal {
     {
         fn set_id(&mut self, id: Node::Id);
         fn set_parent(&mut self, parent: Node::NodeRef);
+
+        /// Take ownership of the children Vec out of the Option, leaving None in its place
+        fn take_children(&mut self) -> Option<Vec<Node::NodeRef>>;
     }
 }
 
-pub trait TreeNode: internal::NodeInternal<Self> + Clone + std::hash::Hash {
+pub trait TreeNode:
+    internal::NodeInternal<Self> + Clone + std::hash::Hash + std::fmt::Debug
+{
     type Data: std::hash::Hash + Clone + std::fmt::Display;
     type Id: UniqueId;
     type DataRef<'b>: Deref<Target = Self::Data>
@@ -189,7 +194,7 @@ mod tests {
     use crate::noderef::rc::NodeRef;
     use crate::{NodeId, Tree, TreeBuilder};
 
-    use crate::node::refcell::Node;
+    use crate::node::simple::Node;
 
     #[derive(Debug)]
     #[allow(unused)]

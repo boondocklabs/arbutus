@@ -33,7 +33,7 @@ where
 
 impl<R, G> PartialEq for IndexedTree<R, G>
 where
-    R: TreeNodeRef,
+    R: TreeNodeRef + std::fmt::Debug,
     G: UniqueGenerator<Output = NodeRefId<R>> + 'static,
 {
     fn eq(&self, other: &Self) -> bool {

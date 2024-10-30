@@ -10,12 +10,12 @@ use xxhash_rust::xxh64::Xxh64;
 
 use crate::{
     id::UniqueGenerator,
-    node::{refcell, TreeNode},
+    node::{simple, TreeNode},
     NodeDepth, NodeIndex, NodePosition, Tree, TreeNodeRef,
 };
 
 type DefaultNodeRef<T> = crate::noderef::rc::NodeRef<T>;
-type DefaultNode<Data, IdGen> = refcell::Node<Data, <IdGen as UniqueGenerator>::Output>;
+type DefaultNode<Data, IdGen> = simple::Node<Data, <IdGen as UniqueGenerator>::Output>;
 
 /// A builder for constructing children from a parent node.
 ///
@@ -214,7 +214,7 @@ where
     D: std::fmt::Display,
     G: UniqueGenerator,
     N: TreeNode<Id = G::Output, NodeRef = R>,
-    R: TreeNodeRef<Inner = N>,
+    R: TreeNodeRef<Inner = N> + std::fmt::Debug,
 {
     /// Creates a new `TreeBuilder` instance.
     pub fn new() -> Self {

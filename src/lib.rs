@@ -13,6 +13,7 @@ mod compare;
 mod diff;
 mod display;
 mod edit;
+mod event;
 mod hash;
 mod id;
 mod index;
@@ -37,6 +38,8 @@ pub use noderef::TreeNodeRef;
 pub use iterator::leaf;
 
 pub use diff::TreeDiff;
+
+pub use event::TreeEvent;
 
 pub type NodeDepth = usize;
 pub type NodeIndex = usize;

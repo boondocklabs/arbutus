@@ -67,9 +67,9 @@ where
     /// Iterate through the tree backwards from a Vec of leaf NodeRefs, calling the provided closure with a reference to each node
     pub fn for_each<F, E>(&mut self, mut f: F) -> Result<(), E>
     where
-        F: FnMut(&R) -> Result<(), E>,
+        F: FnMut(&mut R) -> Result<(), E>,
     {
-        while let Some(node) = self.pop_next() {
+        while let Some(mut node) = self.pop_next() {
             let node_id = node.node().id();
 
             // Get the expected number of children for this node
@@ -95,7 +95,7 @@ where
             }
 
             // All children for this node have been resolved
-            f(&node)?;
+            f(&mut node)?;
 
             if let Some(parent) = node.node().parent() {
                 let parent_id = parent.node().id();

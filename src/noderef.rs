@@ -1,4 +1,7 @@
-use std::ops::{Deref, DerefMut};
+use std::{
+    cell::{BorrowError, BorrowMutError},
+    ops::{Deref, DerefMut},
+};
 
 pub mod rc;
 pub mod simple;
@@ -12,10 +15,15 @@ pub(crate) mod internal {
     pub trait NodeRefInternal<Inner> {}
 }
 
+pub trait TreeNodeRefRef<'a>: TreeNodeRef {
+    fn new(node: &'a mut Self::Inner) -> Self;
+}
+
 pub trait TreeNodeRef:
     internal::NodeRefInternal<<Self as TreeNodeRef>::Inner>
     + Clone
     + std::hash::Hash
+    + std::fmt::Debug
     + IntoIterator<Item = IterNode<Self>>
 {
     // The inner type of this NodeRef is a Node trait, that
@@ -43,18 +51,26 @@ pub trait TreeNodeRef:
     type DataRefMut<'b>: 'b;
 
     // Create a new NodeRef with the supplied Inner node
-    fn new(node: Self::Inner) -> Self;
+    fn new<T>(node: T) -> Self
+    where
+        T: Into<Self::Inner>;
 
     /// Get a reference to the inner node
     fn node<'b>(&'b self) -> Self::InnerRef<'b>;
 
+    /// Try to get a reference to the inner node
+    fn try_node<'b>(&'b self) -> Result<Self::InnerRef<'b>, BorrowError>;
+
     /// Get a reference to the inner node
     fn node_mut<'b>(&'b mut self) -> Self::InnerRefMut<'b>;
+
+    /// Try to get a mutable reference to the inner node
+    fn try_node_mut<'b>(&'b self) -> Result<Self::InnerRefMut<'b>, BorrowMutError>;
 
     /// Calls the provided closure with a reference to the node's data
     fn with_data<'b, R, E, F>(&'b self, f: F) -> Result<R, E>
     where
-        F: FnOnce(Self::DataRef<'_>) -> Result<R, E>;
+        F: FnOnce(Self::DataRef<'_>) -> Result<R, E> + 'b;
 
     /// Calls the provided closure with a mutable reference to the node's data
     fn with_data_mut<'b, R, E, F>(&'b mut self, f: F) -> Result<R, E>

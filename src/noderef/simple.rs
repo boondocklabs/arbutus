@@ -5,32 +5,44 @@ use crate::{
     TreeNode,
 };
 
-use super::{internal::NodeRefInternal, TreeFormat as _, TreeNodeRef};
+use super::{internal::NodeRefInternal, TreeFormat as _, TreeNodeRef, TreeNodeRefRef};
 
 /// Simple reference noderef. Does not allow cloning.
 #[derive(Debug, Hash)]
-pub struct NodeRef<T>
+pub struct NodeRef<'a, T>
 where
     T: TreeNode<NodeRef = Self> + 'static,
 {
-    node: T,
+    node: &'a mut T,
 }
 
-impl<T> NodeRefInternal<T> for NodeRef<T> where T: TreeNode<NodeRef = Self> + 'static {}
+impl<'a, T> NodeRefInternal<T> for NodeRef<'a, T> where T: TreeNode<NodeRef = Self> + 'static {}
 
-impl<T> TreeNodeRef for NodeRef<T>
+impl<'a, T> TreeNodeRefRef<'a> for NodeRef<'a, T>
 where
     T: TreeNode<NodeRef = Self> + 'static,
 {
+    fn new(node: &'a mut Self::Inner) -> Self {
+        Self { node }
+    }
+}
+
+impl<'a, T> TreeNodeRef for NodeRef<'a, T>
+where
+    T: TreeNode<NodeRef = Self> + std::fmt::Debug + 'static,
+{
     type Inner = T;
-    type InnerRef<'b> = &'b Self::Inner;
-    type InnerRefMut<'b> = &'b mut Self::Inner;
+    type InnerRef<'b> = &'b Self::Inner where Self: 'b;
+    type InnerRefMut<'b> = &'b mut Self::Inner where Self: 'b;
     type Data = T::Data;
-    type DataRef<'b> = T::DataRef<'b>;
+    type DataRef<'b> = T::DataRef<'b> where Self: 'b;
     type DataRefMut<'b> = T::DataRefMut<'b>;
 
-    fn new(node: T) -> Self {
-        Self { node }
+    fn new<N>(_node: N) -> Self
+    where
+        N: Into<Self::Inner>,
+    {
+        panic!("Don't use this...");
     }
 
     fn node<'b>(&'b self) -> Self::InnerRef<'b> {
@@ -43,7 +55,7 @@ where
 
     fn with_data<'b, R, E, F>(&'b self, f: F) -> Result<R, E>
     where
-        F: FnOnce(Self::DataRef<'_>) -> Result<R, E>,
+        F: FnOnce(Self::DataRef<'b>) -> Result<R, E> + 'b,
     {
         f(self.node.data())
     }
@@ -83,9 +95,17 @@ where
         }
         Ok(())
     }
+
+    fn try_node<'b>(&'b self) -> Result<Self::InnerRef<'b>, std::cell::BorrowError> {
+        todo!()
+    }
+
+    fn try_node_mut<'b>(&'b self) -> Result<Self::InnerRefMut<'b>, std::cell::BorrowMutError> {
+        todo!()
+    }
 }
 
-impl<T> Deref for NodeRef<T>
+impl<'a, T> Deref for NodeRef<'a, T>
 where
     T: TreeNode<NodeRef = Self>,
 {
@@ -96,7 +116,7 @@ where
     }
 }
 
-impl<T> Clone for NodeRef<T>
+impl<'a, T> Clone for NodeRef<'a, T>
 where
     T: TreeNode<NodeRef = Self>,
 {
@@ -105,7 +125,7 @@ where
     }
 }
 
-impl<N> IntoIterator for NodeRef<N>
+impl<'a, N> IntoIterator for NodeRef<'a, N>
 where
     N: TreeNode<NodeRef = Self> + 'static,
 {
@@ -118,7 +138,7 @@ where
     }
 }
 
-impl<T> std::fmt::Display for NodeRef<T>
+impl<'a, T> std::fmt::Display for NodeRef<'a, T>
 where
     T: TreeNode<NodeRef = Self> + 'static,
 {

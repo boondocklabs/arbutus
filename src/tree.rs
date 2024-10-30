@@ -1,7 +1,8 @@
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     hash::{Hash as _, Hasher},
     ops::{Deref, DerefMut},
+    sync::{atomic::AtomicU64, Arc, Mutex},
 };
 
 use tracing::{debug, error, warn};
@@ -12,10 +13,31 @@ use crate::{
     leaf::LeafIter,
     node::TreeNode,
     noderef::{NodeRefId, TreeNodeRef},
-    UniqueGenerator,
+    TreeEvent, UniqueGenerator,
 };
 
 use crate::node::internal::NodeInternal as _;
+
+pub struct TreeEventListener<R>
+where
+    R: TreeNodeRef + 'static,
+{
+    id: u64,
+    // Event listener registry that we can deregister ourselves from when dropped
+    event_listeners: Arc<Mutex<HashMap<u64, Box<dyn for<'a> FnMut(&'a TreeEvent<R>)>>>>,
+}
+
+impl<'a, R> Drop for TreeEventListener<R>
+where
+    R: TreeNodeRef + 'static,
+{
+    fn drop(&mut self) {
+        debug!("Listener {} dropped. Deregistering.", self.id);
+        if let Ok(mut guard) = self.event_listeners.lock() {
+            guard.remove(&self.id);
+        }
+    }
+}
 
 pub struct Tree<R, G = crate::IdGenerator>
 where
@@ -25,13 +47,19 @@ where
     // Root node of this tree
     root: Option<R>,
 
-    // Unique ID Generator
-    idgen: Option<G>,
+    // Unique Node ID Generator
+    node_id_generator: Option<G>,
+
+    // Next Event Listener ID
+    next_listener_id: AtomicU64,
+
+    // Registry of event listener callbacks
+    event_listeners: Arc<Mutex<HashMap<u64, Box<dyn for<'c> FnMut(&'c TreeEvent<R>)>>>>,
 }
 
 impl<R, G> std::fmt::Debug for Tree<R, G>
 where
-    R: TreeNodeRef + 'static,
+    R: TreeNodeRef + std::fmt::Debug + 'static,
     G: UniqueGenerator<Output = NodeRefId<R>> + 'static,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -48,23 +76,67 @@ where
 
 impl<R, G> Tree<R, G>
 where
-    R: TreeNodeRef + 'static,
+    R: TreeNodeRef + std::fmt::Debug + 'static,
     G: UniqueGenerator<Output = NodeRefId<R>> + 'static,
 {
     pub fn new() -> Self {
         Self {
             root: None,
-            idgen: None,
+            node_id_generator: None,
+            event_listeners: Arc::new(Mutex::new(HashMap::new())),
+            next_listener_id: AtomicU64::new(0),
+        }
+    }
+
+    /// Register an event listener
+    fn listen<'b, F>(&mut self, callback: F) -> Result<TreeEventListener<R>, ()>
+    where
+        F: for<'c> FnMut(&'c TreeEvent<R>) + 'static,
+    {
+        // Get an ID for a new listener
+        let id = self
+            .next_listener_id
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let listener = TreeEventListener {
+            id,
+            event_listeners: self.event_listeners.clone(),
+        };
+
+        if let Ok(mut guard) = self.event_listeners.lock() {
+            guard.insert(id, Box::new(callback));
+            debug!("Event listener {id} added to Tree");
+            Ok(listener)
+        } else {
+            error!("Failed to lock mutex trying to register an Event Listener");
+            Err(())
+        }
+    }
+
+    pub fn on_event<F>(&mut self, f: F) -> Result<TreeEventListener<R>, ()>
+    where
+        F: for<'c> FnMut(&'c TreeEvent<R>) + 'static,
+    {
+        self.listen(f)
+    }
+
+    /// Send an event to all registered listeners
+    fn send_event(&mut self, event: TreeEvent<R>) {
+        if let Ok(mut guard) = self.event_listeners.lock() {
+            for (_id, callback) in &mut *guard {
+                debug!("Sending Event {event:?} to Listener ID {_id}");
+                callback(&event)
+            }
         }
     }
 
     pub fn generator(&self) -> &G {
-        self.idgen.as_ref().unwrap()
+        self.node_id_generator.as_ref().unwrap()
     }
 
     /// Allocate a new node ID
     pub fn generate_id(&self) -> G::Output {
-        self.idgen
+        self.node_id_generator
             .as_ref()
             .expect("ID Generator is not defined")
             .generate()
@@ -104,7 +176,9 @@ where
     pub fn from_node(root: R, idgen: Option<G>) -> Self {
         Self {
             root: Some(root),
-            idgen,
+            node_id_generator: idgen,
+            event_listeners: Arc::new(Mutex::new(HashMap::new())),
+            next_listener_id: AtomicU64::new(0),
         }
     }
 
@@ -151,34 +225,70 @@ where
                 .node_mut()
                 .remove_child_index(index);
         }
+
+        self.send_event(TreeEvent::NodeRemoved { node: node.clone() });
     }
 
     /// Remove a child from a node at the given index
     pub fn remove_child(&mut self, parent: &mut R, index: usize) -> Option<R> {
         let parent_id = parent.node().id();
-        if let Some(removed) = parent.node_mut().remove_child_index(index) {
+        let ret = if let Some(removed) = parent.clone().node_mut().remove_child_index(index) {
             debug!("Child {index} removed from {parent_id}");
             Some(removed)
         } else {
             warn!("Child not found attempting to remove child at index {index}");
             None
-        }
+        };
+
+        self.send_event(TreeEvent::ChildRemoved {
+            parent: parent.clone(),
+            index,
+        });
+
+        ret
     }
 
     /// Remove all children from the specified parent node
     pub fn remove_children(&mut self, parent: &mut R) {
         let parent_id = parent.node().id();
-        parent.node_mut().set_children(None);
+
+        if let Some(children) = (*parent).clone().node_mut().take_children() {
+            let p = parent.clone();
+            self.send_event(TreeEvent::ChildrenRemoved {
+                parent: p,
+                children,
+            });
+        }
+
         debug!("All children removed from {parent_id}");
     }
 
     pub fn set_children(&mut self, parent: &mut R, mut children: Vec<R>) {
+        let mut added_children = Vec::new();
+
+        // For each child being added, set its parent to the new parent
         for child in &mut children {
             let new_id = self.generate_id();
             child.node_mut().set_id(new_id);
             child.node_mut().set_parent(parent.clone());
+
+            added_children.push(child.clone())
         }
+
+        // Take the existing children from the parent, and notify any listeners of their removal
+        if let Some(children) = parent.clone().node_mut().take_children() {
+            self.send_event(TreeEvent::ChildrenRemoved {
+                parent: parent.clone(),
+                children,
+            });
+        }
+
         parent.node_mut().set_children(Some(children));
+
+        self.send_event(TreeEvent::ChildrenAdded {
+            parent: parent.clone(),
+            children: added_children,
+        });
     }
 
     /// Replace a child in a node with a new child at the given index
@@ -194,22 +304,34 @@ where
 
         new.node_mut().set_parent(parent.clone());
         parent.node_mut().replace_child(new, index);
+
+        self.send_event(TreeEvent::ChildReplaced {
+            parent: parent.clone(),
+            index,
+        });
     }
 
     /// Insert a child into a parent at the given index
     pub fn insert_child(&mut self, parent: &mut R, index: usize, mut new: R) -> Option<()> {
         new.node_mut().set_parent(parent.clone());
-        parent.node_mut().insert_child(new, index)
+        let ret = parent.node_mut().insert_child(new, index);
+        self.send_event(TreeEvent::ChildInserted {
+            parent: parent.clone(),
+            index,
+        });
+
+        ret
     }
 
     pub fn replace_node(&mut self, dest: &mut R, source: &R) {
         *dest.node_mut().data_mut() = source.node().data().clone();
+        self.send_event(TreeEvent::NodeReplaced { node: dest.clone() });
     }
 
     /// Create a new node from the provided data. Does not insert into the tree, but allocates a new ID
     pub fn create_node(&self, data: <<R as TreeNodeRef>::Inner as TreeNode>::Data) -> Option<R> {
         // Generate a new Node ID
-        if let Some(gen) = &self.idgen {
+        if let Some(gen) = &self.node_id_generator {
             let id = gen.generate();
             debug!("Allocated new node ID {id}");
 
@@ -230,9 +352,6 @@ where
         R::Data: Clone,
         <<R as TreeNodeRef>::Inner as TreeNode>::Data: Clone,
     {
-        println!("INSERT SUBTREE");
-        //let mut nodes = Vec::new();
-
         subtree
             .for_each_mut(|r| {
                 let new_id = self.generate_id();
@@ -246,7 +365,11 @@ where
         subtree.node_mut().set_parent(parent.clone());
 
         // Insert the root of the cloned subtree into the parent node at the provided index
-        parent.node_mut().insert_child(subtree, index);
+        parent.node_mut().insert_child(subtree.clone(), index);
+
+        self.send_event(TreeEvent::SubtreeInserted {
+            node: subtree.clone(),
+        });
 
         Some(())
     }
@@ -294,7 +417,7 @@ where
 
 impl<R, G> IndexedTree<R, G>
 where
-    R: TreeNodeRef + 'static,
+    R: TreeNodeRef + std::fmt::Debug + 'static,
     G: UniqueGenerator<Output = NodeRefId<R>> + 'static,
 {
     // Create a new empty indexed tree
@@ -369,20 +492,6 @@ where
         Some(())
     }
 
-    pub fn insert_noderef(&mut self, parent: &mut R, index: usize, node: R) -> Option<()> {
-        self.tree.insert_child(parent, index, node.clone())?;
-
-        for node in node.into_iter() {
-            let id = node.node().id().clone();
-            self.index.insert(id, node.clone());
-            if node.node().num_children() == 0 {
-                self.leaves.push(node.clone());
-            }
-        }
-
-        Some(())
-    }
-
     pub fn insert_child(
         &mut self,
         parent_id: NodeRefId<R>,
@@ -404,15 +513,6 @@ where
         }
 
         Some(())
-    }
-
-    pub fn remove_node_id(
-        &mut self,
-        id: &<<R as TreeNodeRef>::Inner as TreeNode>::Id,
-    ) -> Option<()> {
-        debug!("Removing node ID {id}");
-        let node = self.get_node(id)?.clone();
-        self.remove_node(&node)
     }
 
     pub fn leaves<'b>(&'b self) -> &'b Vec<R> {

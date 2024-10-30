@@ -1,5 +1,5 @@
 use std::{
-    cell::{Ref, RefCell, RefMut},
+    cell::{BorrowError, Ref, RefCell, RefMut},
     collections::VecDeque,
     ops::Deref,
     rc::Rc,
@@ -21,7 +21,7 @@ where
 
 impl<T> std::hash::Hash for NodeRef<T>
 where
-    T: TreeNode<NodeRef = Self> + 'static,
+    T: TreeNode<NodeRef = Self> + std::fmt::Debug + 'static,
 {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.node().hash(state)
@@ -65,7 +65,7 @@ where
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("NodeRef")
-            .field("node", &self.node())
+            .field("node", &self.try_node())
             .finish()
     }
 }
@@ -74,7 +74,7 @@ impl<T> NodeRefInternal<T> for NodeRef<T> where T: TreeNode<NodeRef = Self> + 's
 
 impl<T> TreeNodeRef for NodeRef<T>
 where
-    T: TreeNode<NodeRef = Self> + 'static,
+    T: TreeNode<NodeRef = Self> + std::fmt::Debug + 'static,
 {
     type Inner = T;
     type InnerRef<'b> = Ref<'b, Self::Inner>;
@@ -83,9 +83,12 @@ where
     type DataRef<'b> = T::DataRef<'b>;
     type DataRefMut<'b> = T::DataRefMut<'b>;
 
-    fn new(node: T) -> Self {
+    fn new<N>(node: N) -> Self
+    where
+        N: Into<Self::Inner>,
+    {
         Self {
-            node_ref: Rc::new(RefCell::new(node)),
+            node_ref: Rc::new(RefCell::new(node.into())),
         }
     }
 
@@ -94,13 +97,22 @@ where
         r.borrow()
     }
 
+    fn try_node<'b>(&'b self) -> Result<Self::InnerRef<'b>, BorrowError> {
+        let r: &'b RefCell<T> = &self.node_ref;
+        r.try_borrow()
+    }
+
     fn node_mut<'b>(&'b mut self) -> Self::InnerRefMut<'b> {
         (&*self.node_ref).borrow_mut()
     }
 
+    fn try_node_mut<'b>(&'b self) -> Result<Self::InnerRefMut<'b>, std::cell::BorrowMutError> {
+        (&*self.node_ref).try_borrow_mut()
+    }
+
     fn with_data<'b, R, E, F>(&'b self, f: F) -> Result<R, E>
     where
-        F: FnOnce(Self::DataRef<'_>) -> Result<R, E>,
+        F: FnOnce(Self::DataRef<'_>) -> Result<R, E> + 'b,
     {
         let node = self.node_ref.borrow();
         let data = node.data();
