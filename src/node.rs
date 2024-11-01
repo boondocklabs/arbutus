@@ -6,8 +6,8 @@ use std::{
 use crate::{id::UniqueId, noderef::TreeNodeRef, NodePosition};
 use xxhash_rust::xxh64::Xxh64;
 
-//pub mod refcell;
-pub mod simple;
+pub mod arc;
+pub mod rc;
 
 /// Sealed trait for internal Node methods
 pub(crate) mod internal {
@@ -191,10 +191,10 @@ pub trait TreeNode:
 mod tests {
     use tracing_test::traced_test;
 
-    use crate::noderef::rc::NodeRef;
     use crate::{NodeId, Tree, TreeBuilder};
 
-    use crate::node::simple::Node;
+    type NodeRef<T> = crate::noderef::arc::NodeRef<T>;
+    type Node<Data, Id> = crate::node::arc::Node<Data, Id>;
 
     #[derive(Debug)]
     #[allow(unused)]

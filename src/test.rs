@@ -1,5 +1,5 @@
 use crate::{
-    node::simple::Node, noderef::rc::NodeRef, IndexedTree, NodeBuilder, NodeId, TreeBuilder,
+    node::arc::Node, noderef::arc::NodeRef, IndexedTree, NodeBuilder, NodeId, TreeBuilder,
 };
 
 #[derive(Debug)]

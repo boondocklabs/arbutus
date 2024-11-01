@@ -10,12 +10,12 @@ use xxhash_rust::xxh64::Xxh64;
 
 use crate::{
     id::UniqueGenerator,
-    node::{simple, TreeNode},
+    node::{arc, TreeNode},
     NodeDepth, NodeIndex, NodePosition, Tree, TreeNodeRef,
 };
 
-type DefaultNodeRef<T> = crate::noderef::rc::NodeRef<T>;
-type DefaultNode<Data, IdGen> = simple::Node<Data, <IdGen as UniqueGenerator>::Output>;
+type DefaultNodeRef<T> = crate::noderef::arc::NodeRef<T>;
+type DefaultNode<Data, IdGen> = arc::Node<Data, <IdGen as UniqueGenerator>::Output>;
 
 /// A builder for constructing children from a parent node.
 ///
@@ -188,7 +188,7 @@ where
 /// type MyData = String;
 /// type MyError = String;
 ///
-/// use arbutus::{TreeBuilder, node::simple::Node};
+/// use arbutus::{TreeBuilder, node::arc::Node};
 /// let mut builder = TreeBuilder::<MyData, MyError>::new();
 /// let root_builder = builder.root("Root".to_string(), |root| { /* add children */ Ok(()) });
 ///
