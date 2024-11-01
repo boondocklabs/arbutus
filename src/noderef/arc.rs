@@ -1,9 +1,6 @@
-use std::{
-    cell::{BorrowError, Ref, RefCell, RefMut},
-    collections::VecDeque,
-    ops::Deref,
-    sync::Arc,
-};
+use std::{cell::BorrowError, collections::VecDeque, sync::Arc};
+
+use parking_lot::{ArcRwLockReadGuard, ArcRwLockWriteGuard, RawRwLock, RwLock};
 
 use crate::{
     iterator::{IterNode, NodeRefIter},
@@ -16,7 +13,7 @@ pub struct NodeRef<T>
 where
     T: TreeNode<NodeRef = Self>,
 {
-    node_ref: Arc<RefCell<T>>,
+    node_ref: Arc<RwLock<T>>,
 }
 
 impl<T> std::hash::Hash for NodeRef<T>
@@ -45,7 +42,7 @@ where
 {
     pub fn new(node: T) -> Self {
         Self {
-            node_ref: Arc::new(RefCell::new(node)),
+            node_ref: Arc::new(RwLock::new(node)),
         }
     }
 }
@@ -75,8 +72,8 @@ where
     T: TreeNode<NodeRef = Self> + std::fmt::Debug + 'static,
 {
     type Inner = T;
-    type InnerRef<'b> = Ref<'b, Self::Inner>;
-    type InnerRefMut<'b> = RefMut<'b, Self::Inner>;
+    type InnerRef<'b> = ArcRwLockReadGuard<RawRwLock, Self::Inner>;
+    type InnerRefMut<'b> = ArcRwLockWriteGuard<RawRwLock, Self::Inner>;
     type Data = T::Data;
 
     fn new<N>(node: N) -> Self
@@ -84,26 +81,26 @@ where
         N: Into<Self::Inner>,
     {
         Self {
-            node_ref: Arc::new(RefCell::new(node.into())),
+            node_ref: Arc::new(RwLock::new(node.into())),
         }
     }
 
     fn node<'b>(&'b self) -> Self::InnerRef<'b> {
-        let r: &'b RefCell<T> = &self.node_ref;
-        r.borrow()
+        self.node_ref.read_arc()
     }
 
     fn try_node<'b>(&'b self) -> Result<Self::InnerRef<'b>, BorrowError> {
-        let r: &'b RefCell<T> = &self.node_ref;
-        r.try_borrow()
+        // TODO: change error type of Result to handle other impls
+        Ok(self.node_ref.try_read_arc().unwrap())
     }
 
     fn node_mut<'b>(&'b mut self) -> Self::InnerRefMut<'b> {
-        (&*self.node_ref).borrow_mut()
+        self.node_ref.write_arc()
     }
 
     fn try_node_mut<'b>(&'b self) -> Result<Self::InnerRefMut<'b>, std::cell::BorrowMutError> {
-        (&*self.node_ref).try_borrow_mut()
+        // TODO: change error type of Result to handle other impls
+        Ok(self.node_ref.try_write_arc().unwrap())
     }
 
     fn for_each<E, F>(&self, f: F) -> Result<(), E>
@@ -136,16 +133,18 @@ where
     }
 }
 
+/*
 impl<T> Deref for NodeRef<T>
 where
-    T: TreeNode<NodeRef = Self>,
+    T: TreeNode<NodeRef = Self> + 'static,
 {
-    type Target = RefCell<T>;
+    type Target = ArcRwLockReadGuard<RawRwLock, T>;
 
     fn deref(&self) -> &Self::Target {
-        &*self.node_ref
+        self.node()
     }
 }
+*/
 
 impl<N> IntoIterator for NodeRef<N>
 where

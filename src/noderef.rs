@@ -146,14 +146,14 @@ trait TreeFormat {
 impl<T: TreeNodeRef> TreeFormat for T
 where
     T: TreeNodeRef,
-    for<'x> T::InnerRef<'x>: std::fmt::Debug,
+    T::Inner: std::fmt::Debug,
 {
     fn tree_format_display(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         TreeDisplay::format(self, f, |data, f| write!(f, "{}", *data))
     }
     fn tree_format_debug(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("NodeRef")
-            .field("node", &self.try_node())
+            //.field("node", &*self.try_node().unwrap())
             .finish()
     }
 }

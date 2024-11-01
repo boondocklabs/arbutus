@@ -10,6 +10,7 @@ readme = "README.md"
 
 [dependencies]
 colored = "2.1.0"
+parking_lot = { version = "0.12.3", features = ["arc_lock", "deadlock_detection"] }
 tracing = "0.1.40"
 uuid = { version = "1.10.0", features = ["js", "v4"] }
 xxhash-rust = { version = "0.8.12", features = ["xxh64"] }

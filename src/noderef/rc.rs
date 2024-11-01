@@ -1,6 +1,5 @@
 use std::{
     cell::{BorrowError, Ref, RefCell, RefMut},
-    ops::Deref,
     rc::Rc,
 };
 
@@ -103,17 +102,6 @@ where
 
     fn try_node_mut<'b>(&'b self) -> Result<Self::InnerRefMut<'b>, std::cell::BorrowMutError> {
         (&*self.node_ref).try_borrow_mut()
-    }
-}
-
-impl<T> Deref for NodeRef<T>
-where
-    T: TreeNode<NodeRef = Self>,
-{
-    type Target = RefCell<T>;
-
-    fn deref(&self) -> &Self::Target {
-        &*self.node_ref
     }
 }
 
