@@ -1,6 +1,5 @@
 use std::{
     cell::{BorrowError, Ref, RefCell, RefMut},
-    collections::VecDeque,
     ops::Deref,
     rc::Rc,
 };
@@ -55,7 +54,7 @@ where
     T: TreeNode<NodeRef = Self> + 'static,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.tree_format(f)
+        self.tree_format_display(f)
     }
 }
 
@@ -64,9 +63,7 @@ where
     T: TreeNode<NodeRef = Self> + std::fmt::Debug + 'static,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("NodeRef")
-            .field("node", &self.try_node())
-            .finish()
+        self.tree_format_debug(f)
     }
 }
 
@@ -80,8 +77,6 @@ where
     type InnerRef<'b> = Ref<'b, Self::Inner>;
     type InnerRefMut<'b> = RefMut<'b, Self::Inner>;
     type Data = T::Data;
-    type DataRef<'b> = T::DataRef<'b>;
-    type DataRefMut<'b> = T::DataRefMut<'b>;
 
     fn new<N>(node: N) -> Self
     where
@@ -108,53 +103,6 @@ where
 
     fn try_node_mut<'b>(&'b self) -> Result<Self::InnerRefMut<'b>, std::cell::BorrowMutError> {
         (&*self.node_ref).try_borrow_mut()
-    }
-
-    fn with_data<'b, R, E, F>(&'b self, f: F) -> Result<R, E>
-    where
-        F: FnOnce(Self::DataRef<'_>) -> Result<R, E> + 'b,
-    {
-        let node = self.node_ref.borrow();
-        let data = node.data();
-        f(data)
-    }
-
-    fn with_data_mut<'b, R, E, F>(&'b mut self, f: F) -> Result<R, E>
-    where
-        F: FnOnce(Self::DataRefMut<'_>) -> Result<R, E>,
-    {
-        let mut node = self.node_ref.borrow_mut();
-        let data = node.data_mut();
-        f(data)
-    }
-
-    fn for_each<E, F>(&self, f: F) -> Result<(), E>
-    where
-        F: Fn(usize, Self) -> Result<(), E>,
-    {
-        // Create a stack with depth 0, and the initial node
-        let mut stack: VecDeque<(usize, Self)> = VecDeque::from([(0, self.clone())]);
-
-        loop {
-            let current = stack.pop_front();
-            if let None = current {
-                break;
-            };
-            let node = current.map(|node| {
-                node.1.node().children().map(|children| {
-                    children
-                        .iter()
-                        .rev()
-                        .for_each(|child| stack.push_front((node.0 + 1, child.clone())))
-                });
-                node
-            });
-
-            if let Some(node) = node {
-                f(node.0, node.1)?
-            }
-        }
-        Ok(())
     }
 }
 

@@ -188,7 +188,7 @@ where
 /// type MyData = String;
 /// type MyError = String;
 ///
-/// use arbutus::{TreeBuilder, node::refcell::Node};
+/// use arbutus::{TreeBuilder, node::simple::Node};
 /// let mut builder = TreeBuilder::<MyData, MyError>::new();
 /// let root_builder = builder.root("Root".to_string(), |root| { /* add children */ Ok(()) });
 ///

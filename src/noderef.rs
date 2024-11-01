@@ -3,8 +3,8 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
+pub mod arc;
 pub mod rc;
-pub mod simple;
 
 /// Type alias to get associated type of Id from the Inner node of a NodeRef
 pub type NodeRefId<R> = <<R as TreeNodeRef>::Inner as TreeNode>::Id;
@@ -13,10 +13,6 @@ use crate::{display::TreeDisplay, iterator::IterNode, node::TreeNode};
 
 pub(crate) mod internal {
     pub trait NodeRefInternal<Inner> {}
-}
-
-pub trait TreeNodeRefRef<'a>: TreeNodeRef {
-    fn new(node: &'a mut Self::Inner) -> Self;
 }
 
 pub trait TreeNodeRef:
@@ -42,14 +38,6 @@ pub trait TreeNodeRef:
     // The Data type contained within the Inner Node
     type Data;
 
-    // A reference to the Inner Node's data
-    type DataRef<'b>: Deref<Target = Self::Data>
-    where
-        Self: 'b;
-
-    // A mutable reference
-    type DataRefMut<'b>: 'b;
-
     // Create a new NodeRef with the supplied Inner node
     fn new<T>(node: T) -> Self
     where
@@ -67,21 +55,56 @@ pub trait TreeNodeRef:
     /// Try to get a mutable reference to the inner node
     fn try_node_mut<'b>(&'b self) -> Result<Self::InnerRefMut<'b>, BorrowMutError>;
 
-    /// Calls the provided closure with a reference to the node's data
+    /// Calls the provided closure with a reference to the Node's data
     fn with_data<'b, R, E, F>(&'b self, f: F) -> Result<R, E>
     where
-        F: FnOnce(Self::DataRef<'_>) -> Result<R, E> + 'b;
+        F: FnOnce(<Self::Inner as TreeNode>::DataRef<'_>) -> Result<R, E> + 'b,
+    {
+        let node = self.node();
+        let data = node.data();
+        f(data)
+    }
 
-    /// Calls the provided closure with a mutable reference to the node's data
+    /// Calls the provided closure with a mutable reference to the Node's data
     fn with_data_mut<'b, R, E, F>(&'b mut self, f: F) -> Result<R, E>
     where
-        F: FnOnce(Self::DataRefMut<'_>) -> Result<R, E>;
+        F: FnOnce(<Self::Inner as TreeNode>::DataRefMut<'_>) -> Result<R, E> + 'b,
+    {
+        let mut node = self.node_mut();
+        let data = node.data_mut();
+        f(data)
+    }
 
     /// Calls the provided closure for each node in the tree.
     /// Includes depth of the node in the first parameter of the closure
     fn for_each<E, F>(&self, f: F) -> Result<(), E>
     where
-        F: Fn(usize, Self) -> Result<(), E>;
+        F: Fn(usize, Self) -> Result<(), E>,
+    {
+        // Create a stack with depth 0, and the initial node
+        let mut stack: Vec<(usize, Self)> = Vec::from([(0, self.clone())]);
+
+        loop {
+            let current = stack.pop();
+            if let None = current {
+                break;
+            };
+            let node = current.map(|node| {
+                node.1.node().children().map(|children| {
+                    children
+                        .iter()
+                        .rev()
+                        .for_each(|child| stack.push((node.0 + 1, child.clone())))
+                });
+                node
+            });
+
+            if let Some(node) = node {
+                f(node.0, node.1)?
+            }
+        }
+        Ok(())
+    }
 
     /// Iterate through each node from the specified NodeRef. Calls a closure with a mutable reference to each NodeRef
     fn for_each_mut<E, F>(&mut self, mut f: F) -> Result<(), E>
@@ -115,15 +138,22 @@ pub trait TreeNodeRef:
 }
 
 trait TreeFormat {
-    fn tree_format(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result;
+    fn tree_format_display(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result;
+    fn tree_format_debug(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result;
 }
 
-// Implement TreeFormat on anything implementing NodeRef and Display
+// Implement TreeFormat on anything implementing NodeRef
 impl<T: TreeNodeRef> TreeFormat for T
 where
     T: TreeNodeRef,
+    for<'x> T::InnerRef<'x>: std::fmt::Debug,
 {
-    fn tree_format(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn tree_format_display(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         TreeDisplay::format(self, f, |data, f| write!(f, "{}", *data))
+    }
+    fn tree_format_debug(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NodeRef")
+            .field("node", &self.try_node())
+            .finish()
     }
 }
