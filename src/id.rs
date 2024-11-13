@@ -1,4 +1,4 @@
-use std::{rc::Rc, sync::atomic::AtomicU64};
+use std::sync::{atomic::AtomicU64, Arc};
 
 pub trait UniqueId:
     Copy + Clone + Ord + PartialEq + std::fmt::Debug + std::fmt::Display + std::hash::Hash
@@ -19,7 +19,7 @@ pub trait UniqueGenerator: Default + std::fmt::Debug + Clone + 'static {
 
 #[derive(Default, Debug, Clone)]
 pub struct AtomicU64Generator {
-    next_id: Rc<AtomicU64>,
+    next_id: Arc<AtomicU64>,
 }
 
 impl UniqueGenerator for AtomicU64Generator {

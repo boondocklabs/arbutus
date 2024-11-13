@@ -24,7 +24,7 @@ where
 {
     id: u64,
     // Event listener registry that we can deregister ourselves from when dropped
-    event_listeners: Arc<Mutex<HashMap<u64, Box<dyn for<'a> FnMut(&'a TreeEvent<R>)>>>>,
+    event_listeners: Arc<Mutex<HashMap<u64, Box<dyn for<'a> FnMut(&'a TreeEvent<R>) + Send>>>>,
 }
 
 impl<'a, R> Drop for TreeEventListener<R>
@@ -54,7 +54,7 @@ where
     next_listener_id: AtomicU64,
 
     // Registry of event listener callbacks
-    event_listeners: Arc<Mutex<HashMap<u64, Box<dyn for<'c> FnMut(&'c TreeEvent<R>)>>>>,
+    event_listeners: Arc<Mutex<HashMap<u64, Box<dyn for<'c> FnMut(&'c TreeEvent<R>) + Send>>>>,
 }
 
 impl<R, G> std::fmt::Debug for Tree<R, G>
@@ -91,7 +91,7 @@ where
     /// Register an event listener
     fn listen<'b, F>(&mut self, callback: F) -> Result<TreeEventListener<R>, ()>
     where
-        F: for<'c> FnMut(&'c TreeEvent<R>) + 'static,
+        F: for<'c> FnMut(&'c TreeEvent<R>) + Send + 'static,
     {
         // Get an ID for a new listener
         let id = self
@@ -115,7 +115,7 @@ where
 
     pub fn on_event<F>(&mut self, f: F) -> Result<TreeEventListener<R>, ()>
     where
-        F: for<'c> FnMut(&'c TreeEvent<R>) + 'static,
+        F: for<'c> FnMut(&'c TreeEvent<R>) + Send + 'static,
     {
         self.listen(f)
     }
